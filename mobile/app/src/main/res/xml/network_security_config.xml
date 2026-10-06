@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No cleartext, no user-installed CAs. The relay is authenticated by SPKI pinning in code
+     (pins come from the pairing QR, so they cannot be declared statically here). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

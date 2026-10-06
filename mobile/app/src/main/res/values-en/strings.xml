@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_status_unpaired">Not paired</string>
+    <string name="home_status_unpaired_hint">Pair this phone with your computer to locate, ring or lock it remotely.</string>
+    <string name="home_action_pair">Pair</string>
+    <string name="home_action_pair_unavailable">Available in an upcoming version.</string>
+</resources>

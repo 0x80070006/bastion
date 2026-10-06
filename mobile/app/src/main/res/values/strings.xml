@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_status_unpaired">Non appairé</string>
+    <string name="home_status_unpaired_hint">Appairez ce téléphone avec votre PC pour pouvoir le localiser, le faire sonner ou le verrouiller à distance.</string>
+    <string name="home_action_pair">Appairer</string>
+    <string name="home_action_pair_unavailable">Disponible dans une prochaine version.</string>
+</resources>
