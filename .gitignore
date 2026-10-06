@@ -1,0 +1,36 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+
+# Rust
+/target/
+**/target/
+
+# Node
+node_modules/
+dist/
+.svelte-kit/
+coverage/
+*.tsbuildinfo
+
+# Gradle / Android
+mobile/.gradle/
+mobile/**/build/
+mobile/local.properties
+mobile/.kotlin/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Relay runtime data / secrets
+relay/data/
+*.env
+!*.env.example
+
+# Generated protobuf (regenerated at build)
+desktop/src/lib/proto/gen/

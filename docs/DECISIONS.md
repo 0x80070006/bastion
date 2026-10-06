@@ -1,0 +1,124 @@
+# Décisions d'architecture (ADR)
+
+Format court : contexte → décision → conséquences. Les ADR ne sont jamais réécrits ; un ADR
+remplacé est marqué *Remplacé par ADR-xxxx*.
+
+---
+
+## ADR-0001 — Monorepo unique
+
+* **Contexte** : trois logiciels partagent un protocole, des tokens de design et un nom de code provisoire.
+* **Décision** : un seul dépôt ; `protocol/`, `design/` et `branding/` sont les sources uniques.
+  Workspace Cargo à la racine (`crates/*`, `relay`, `desktop/src-tauri`), projet Gradle dans
+  `mobile/`, workspace pnpm à la racine (`desktop`, `protocol`).
+* **Conséquences** : une modification du protocole est atomique sur les trois composants ; la CI est plus longue (jobs parallélisés et filtrés par chemin).
+
+## ADR-0002 — Nom de code dans un seul fichier
+
+* **Décision** : `branding/product.json` contient le nom affiché, l'identifiant d'application
+  et le schéma d'URI. Gradle (`resValue`/`BuildConfig`), Cargo (`build.rs`) et Vite (import JSON)
+  le lisent au build. Les chaînes i18n utilisent un paramètre/ressource `product_name`.
+* **Conséquences** : renommer = modifier un fichier (+ l'`applicationId` si souhaité). Les noms de
+  packages Kotlin / crates restent `bastion` (identifiants techniques, non affichés).
+
+## ADR-0003 — Frontend desktop : Svelte 5
+
+* **Contexte** : le prompt laisse le choix Svelte ou React.
+* **Décision** : **Svelte 5** (runes) + TypeScript + Vite.
+* **Raisons** : compilé, runtime minuscule (surface d'attaque et taille du binaire Tauri
+  réduites), réactivité explicite sans bibliothèque d'état externe, très peu de boilerplate pour
+  une console à quelques écrans. React apporterait surtout un écosystème de composants que la
+  direction artistique custom n'utiliserait pas.
+* **Conséquences** : tests avec Vitest + `@testing-library/svelte` ; ESLint `eslint-plugin-svelte`.
+
+## ADR-0004 — Relay en Rust (axum), partage de code avec le desktop
+
+* **Décision** : relay en Rust/axum/tokio plutôt qu'en Go.
+* **Raisons** : le backend Tauri est en Rust ; le relay et le desktop partagent `bastion-proto`
+  et `bastion-crypto`. Une seule implémentation serveur/PC du protocole à auditer.
+* **Conséquences** : image Docker basée sur `distroless/cc` (libsodium lié statiquement).
+
+## ADR-0005 — Liaisons libsodium
+
+* **Décision** :
+  * Rust : `libsodium-sys-stable` (maintenu par l'auteur de libsodium), encapsulé dans une API
+    sûre minimale dans `bastion-crypto`. Pas de `sodiumoxide` (archivé).
+  * Kotlin : `lazysodium-java` (tests JVM) / `lazysodium-android` (app), via une interface
+    commune dans `:core:crypto` pour garder le module testable sur la JVM.
+  * TypeScript : **aucune crypto dans le webview** ; le frontend ne manipule que des données déjà
+    vérifiées par le backend Rust. Le code TS généré depuis Protobuf sert au typage des vues et aux
+    outils de diagnostic.
+* **Conséquences** : vecteurs de test partagés (`protocol/testvectors/`) exécutés par Rust et Kotlin
+  pour garantir l'interopérabilité (jalon 2).
+
+## ADR-0006 — Génération Protobuf sans `protoc` système
+
+* **Décision** : `buf` (paquet npm `@bufbuild/buf`) pour lint, détection de rupture et génération
+  TS (`protobuf-es`) ; `protoc-bin-vendored` pour `prost-build` côté Rust ; artefact Maven
+  `com.google.protobuf:protoc` via `protobuf-gradle-plugin` côté Kotlin (runtime **lite**).
+* **Conséquences** : aucun binaire à installer à la main ; versions épinglées dans les lockfiles.
+
+## ADR-0007 — Clés de session statiques par époque, sans double ratchet en v1
+
+* **Contexte** : la boîte aux lettres doit fonctionner hors ligne (le téléphone peut être injoignable
+  des heures) ; un double ratchet ajoute une complexité d'état importante et des risques de désynchronisation.
+* **Décision** : clés directionnelles dérivées de X25519 statique-statique par époque, rotation
+  signée des clés X25519 tous les 7 jours, nonce aléatoire 24 octets (XChaCha).
+* **Conséquences** : compromission d'une `XK` ⇒ messages de son époque lisibles (fenêtre ≤ 7 j + 24 h).
+  Ré-évaluable en v2 (Noise/MLS-like) sans casser v1.
+
+## ADR-0008 — Clé de commande privilégiée `PK`
+
+* **Contexte** : le prompt exige une ré-authentification sur le PC pour les commandes sensibles ;
+  sans preuve cryptographique, un malware sur le PC pourrait contourner l'interface.
+* **Décision** : une clé Ed25519 `PK` scellée par Argon2id(mot de passe maître), enregistrée chez le
+  téléphone à l'appairage, contresigne `Lock`, `Wipe`, `Unpair`.
+* **Conséquences** : le téléphone peut vérifier que la ré-authentification a eu lieu. Perte du mot de passe
+  maître ⇒ ré-appairage nécessaire pour les commandes sensibles.
+
+## ADR-0009 — TLS auto-signé épinglé plutôt que PKI publique
+
+* **Décision** : le relay génère son certificat à l'amorçage ; l'empreinte SPKI est transmise dans le QR.
+  Un reverse-proxy Let's Encrypt reste possible mais n'est pas requis et n'est jamais *la* source de confiance.
+* **Conséquences** : fonctionne avec une IP brute ou un nom local ; changer de certificat impose de
+  ré-épingler (flux « rotation du relay » documenté au jalon 3).
+
+## ADR-0010 — Modules Gradle supplémentaires
+
+* **Contexte** : le prompt liste `:core:crypto`, `:core:protocol`, `:core:vpn`, `:feature:*`, `:app`.
+* **Décision** : ajout de `:core:domain` (cas d'usage purs, JVM) et `:core:designsystem` (thème
+  et composants partagés par les features). Les trois modules `domain`, `crypto`, `protocol` sont
+  des modules **Kotlin/JVM** (pas Android) pour des tests rapides.
+* **Conséquences** : le respect de la Clean Architecture est imposé par le graphe de modules.
+
+## ADR-0011 — Versions de la chaîne Android (vérifiées le 2026-10-06)
+
+* **Décision** : AGP 9.4.1, Gradle 9.8.0, Kotlin 2.4.20, `compileSdk`/`targetSdk` 37
+  (Android 17, dernière plateforme stable publiée dans le SDK Manager), `minSdk` 29, JDK 21.
+* **Écarts constatés par rapport aux habitudes antérieures** : AGP 9 intègre le support Kotlin
+  (*built-in Kotlin*) ; le plugin `org.jetbrains.kotlin.android` n'est plus appliqué aux modules
+  Android. Le plugin Compose compiler reste `org.jetbrains.kotlin.plugin.compose`.
+* **Conséquences** : version catalog `mobile/gradle/libs.versions.toml` ; mises à jour via PR dédiées.
+
+## ADR-0012 — Licences
+
+* **Décision** : GPL-3.0-or-later pour Mobile, Desktop, crates partagées et protocole ;
+  **AGPL-3.0-or-later** pour le relay.
+* **Raisons** : copyleft fort pour les apps ; l'AGPL couvre le cas « relay hébergé comme service »
+  (les utilisateurs d'un relay modifié peuvent en obtenir le code). Les crates partagées en GPL sont
+  compatibles avec un binaire AGPL (GPLv3 §13).
+* **Conséquences** : `LICENSE` (GPL-3.0) à la racine, `relay/LICENSE` (AGPL-3.0). Dépendances vérifiées
+  compatibles (cargo-deny, jalon 7).
+
+## ADR-0013 — Tokens de design générés
+
+* **Décision** : `design/tokens.json` → `tools/gen-tokens.mjs` → `Tokens.kt` (mobile) et
+  `tokens.css` (desktop). Fichiers générés commités ; la CI exécute le générateur et échoue sur diff.
+* **Conséquences** : impossible d'introduire une couleur hors palette sans passer par le fichier unique.
+
+## ADR-0014 — Polices
+
+* **Décision** : **Inter Tight** (UI) et **JetBrains Mono** (données techniques), toutes deux sous
+  licence OFL, embarquées dans les binaires (jamais chargées depuis Google Fonts). Côté desktop via les
+  paquets `@fontsource/*` ; côté Android, fichiers `res/font` ajoutés au jalon 4 (le jalon 1 utilise
+  les familles système en repli).

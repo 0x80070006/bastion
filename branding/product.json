@@ -1,0 +1,8 @@
+{
+  "$comment": "Single source of truth for the provisional product name. See docs/DECISIONS.md ADR-0002.",
+  "name": "Bastion",
+  "slug": "bastion",
+  "applicationId": "org.bastion.mobile",
+  "desktopIdentifier": "org.bastion.desktop",
+  "uriScheme": "bastion"
+}
