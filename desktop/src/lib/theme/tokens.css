@@ -1,0 +1,62 @@
+/* GENERATED from design/tokens.json by tools/gen-tokens.mjs. Do not edit. */
+:root {
+  --color-background: #0a0a0b;
+  --color-surface: #111113;
+  --color-surface-raised: #17171a;
+  --color-border: #24242a;
+  --color-border-active: #34343c;
+  --color-text-primary: #ededef;
+  --color-text-secondary: #9a9aa3;
+  --color-text-tertiary: #62626b;
+  --color-accent: #c9b27c;
+  --color-on-accent: #0a0a0b;
+  --color-danger: #c5574f;
+  --color-success: #5fa37a;
+  --color-warning: #c79a4a;
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --border-width: 1px;
+  --font-sans: "Inter Tight", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --type-display-size: 32px;
+  --type-display-line-height: 40px;
+  --type-display-weight: 600;
+  --type-display-tracking: -0.4px;
+  --type-title-size: 20px;
+  --type-title-line-height: 28px;
+  --type-title-weight: 600;
+  --type-title-tracking: -0.2px;
+  --type-body-size: 15px;
+  --type-body-line-height: 22px;
+  --type-body-weight: 400;
+  --type-body-tracking: 0px;
+  --type-label-size: 13px;
+  --type-label-line-height: 18px;
+  --type-label-weight: 500;
+  --type-label-tracking: 0.1px;
+  --type-caption-size: 12px;
+  --type-caption-line-height: 16px;
+  --type-caption-weight: 400;
+  --type-caption-tracking: 0.2px;
+  --motion-fast: 120ms;
+  --motion-standard: 160ms;
+  --motion-slow: 200ms;
+  --motion-easing: cubic-bezier(0, 0, 0.2, 1);
+  --touch-target-min: 48px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-standard: 0ms;
+    --motion-slow: 0ms;
+  }
+}

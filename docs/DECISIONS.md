@@ -122,3 +122,12 @@ remplacé est marqué *Remplacé par ADR-xxxx*.
   licence OFL, embarquées dans les binaires (jamais chargées depuis Google Fonts). Côté desktop via les
   paquets `@fontsource/*` ; côté Android, fichiers `res/font` ajoutés au jalon 4 (le jalon 1 utilise
   les familles système en repli).
+
+## ADR-0015 — Ajustement de la couleur « danger »
+
+* **Contexte** : `#C4554D` proposé dans le cahier des charges atteint 4,48:1 sur `#0A0A0B`, sous le
+  seuil AA (4,5:1) exigé pour tout texte. Le générateur de tokens vérifie le contraste et a refusé la palette.
+* **Décision** : `danger = #C5574F` (4,57:1), écart imperceptible. `textTertiary` (3,28:1) est réservé aux
+  contrôles désactivés et séparateurs (exemptés par WCAG 1.4.3) ; le générateur impose ≥ 3:1 pour lui
+  et ≥ 4,5:1 pour toutes les autres couleurs de texte/état.
+* **Conséquences** : toute nouvelle couleur passe la même vérification en CI.
