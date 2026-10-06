@@ -34,3 +34,6 @@ relay/data/
 
 # Generated protobuf (regenerated at build)
 desktop/src/lib/proto/gen/
+
+# Tauri generated schemas
+desktop/src-tauri/gen/
