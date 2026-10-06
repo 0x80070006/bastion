@@ -1,0 +1,40 @@
+# Install: pipx install pre-commit && pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: generated-files
+        name: tokens & branding up to date
+        entry: pnpm gen:check
+        language: system
+        pass_filenames: false
+        files: ^(design/|branding/|tools/)
+      - id: proto-lint
+        name: buf lint
+        entry: pnpm proto:lint
+        language: system
+        pass_filenames: false
+        files: ^protocol/
+      - id: rustfmt
+        name: rustfmt
+        entry: cargo fmt --all --check
+        language: system
+        pass_filenames: false
+        types: [rust]
+      - id: clippy
+        name: clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        pass_filenames: false
+        types: [rust]
+      - id: desktop-lint
+        name: eslint + prettier
+        entry: pnpm --dir desktop lint
+        language: system
+        pass_filenames: false
+        files: ^desktop/(?!src-tauri/)
+      - id: ktlint
+        name: ktlint
+        entry: bash -c 'cd mobile && ./gradlew ktlintCheck -q'
+        language: system
+        pass_filenames: false
+        files: ^mobile/.*\.kts?$
