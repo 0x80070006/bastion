@@ -1,0 +1,6 @@
+dist
+coverage
+src-tauri
+src/lib/proto/gen
+src/lib/theme/tokens.css
+pnpm-lock.yaml

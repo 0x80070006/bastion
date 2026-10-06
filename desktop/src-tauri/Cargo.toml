@@ -1,0 +1,26 @@
+[package]
+name = "bastion-desktop"
+version = "0.1.0"
+description = "Bastion desktop controller"
+license = "GPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "bastion_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+serde_json.workspace = true
+
+[dependencies]
+bastion-proto.workspace = true
+tauri.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
