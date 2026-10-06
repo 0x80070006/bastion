@@ -1,0 +1,9 @@
+# TypeScript generation for the desktop frontend (types only; no crypto in the webview).
+# Run from the repository root: `pnpm proto:gen`.
+version: v2
+plugins:
+  - local: protoc-gen-es
+    out: desktop/src/lib/proto/gen
+    opt:
+      - target=ts
+      - import_extension=js

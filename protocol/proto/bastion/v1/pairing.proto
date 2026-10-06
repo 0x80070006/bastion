@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Pairing and enrollment. See docs/PROTOCOL.md §3.
+syntax = "proto3";
+
+package bastion.v1;
+
+option java_multiple_files = true;
+option java_package = "org.bastion.protocol.v1";
+
+// Public keys of a device.
+message DeviceKeys {
+  // Ed25519 identity public key, 32 bytes.
+  bytes identity_public_key = 1;
+  // X25519 public key, 32 bytes.
+  bytes x25519_public_key = 2;
+  // Ed25519("bastion-xk-v1" || x25519_public_key || u32be(key_epoch)).
+  bytes x25519_signature = 3;
+  uint32 key_epoch = 4;
+}
+
+// Encoded in the pairing QR code: bastion://pair/v1#<base64url(PairingInvite)>.
+message PairingInvite {
+  uint32 version = 1;
+  // HTTPS endpoint, e.g. "https://relay.example.org:8443".
+  string relay_https_endpoint = 2;
+  // WireGuard endpoint host:port.
+  string relay_wireguard_endpoint = 3;
+  // SHA-256 of the relay TLS certificate SubjectPublicKeyInfo, 32 bytes.
+  bytes relay_tls_spki_sha256 = 4;
+  // Relay WireGuard public key, 32 bytes.
+  bytes relay_wireguard_public_key = 5;
+  DeviceKeys controller = 6;
+  // Controller privileged command key (Ed25519), 32 bytes.
+  bytes controller_privileged_public_key = 7;
+  // One-time pairing token, 16 bytes. Never sent to the relay.
+  bytes token = 8;
+  // Unix epoch milliseconds; at most 5 minutes after creation.
+  int64 expires_at_ms = 9;
+  // Human-readable controller label, max 64 chars.
+  string controller_label = 10;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_PHONE = 1;
+  ROLE_CONTROLLER = 2;
+}
+
+// Controller -> relay: registers a pending invitation.
+message CreateInviteRequest {
+  // BLAKE2b-256(key = "bastion-invite-v1", token), 32 bytes.
+  bytes token_hash = 1;
+  int64 expires_at_ms = 2;
+}
+
+// Phone -> relay.
+message EnrollRequest {
+  bytes token_hash = 1;
+  DeviceKeys device = 2;
+  // WireGuard public key, 32 bytes.
+  bytes wireguard_public_key = 3;
+  // Opaque to the relay; forwarded inside PairingHello.
+  bytes proof = 4;
+  Role role = 5;
+  // Ed25519 by the device identity key over the explicit transcript defined in
+  // docs/PROTOCOL.md §3.2 (never over a protobuf serialization, which is not canonical).
+  bytes signature = 6;
+}
+
+message EnrollResponse {
+  // 16 bytes.
+  bytes device_id = 1;
+  // CIDR addresses assigned to the device on the WireGuard interface.
+  repeated string addresses = 2;
+  // AllowedIPs to configure for the relay peer (management subnet).
+  repeated string allowed_ips = 3;
+  // DNS servers suggested for the tunnel (may be empty).
+  repeated string dns = 4;
+  // 16 bytes: id of the controller that created the invitation.
+  bytes controller_id = 5;
+  uint32 persistent_keepalive_seconds = 6;
+}
+
+// Phone -> controller, sealed with crypto_box_seal to the controller X25519 key.
+message PairingHello {
+  DeviceKeys device = 1;
+  bytes proof = 2;
+  // Human-readable device label, max 64 chars (e.g. "Pixel 9a").
+  string device_label = 3;
+  // Highest protocol version supported; both sides persist min(local, remote).
+  uint32 max_protocol_version = 4;
+}
+
+// Controller -> phone, once the user confirmed the SAS on the controller.
+message PairingConfirm {
+  bool confirmed = 1;
+  uint32 negotiated_protocol_version = 2;
+}

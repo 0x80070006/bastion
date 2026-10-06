@@ -1,0 +1,23 @@
+{
+  "name": "bastion-monorepo",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "tokens:gen": "node tools/gen-tokens.mjs",
+    "tokens:check": "node tools/gen-tokens.mjs --check",
+    "proto:lint": "buf lint protocol && buf format protocol --diff --exit-code",
+    "proto:gen": "buf generate protocol --template protocol/buf.gen.yaml",
+    "proto:breaking": "buf breaking protocol --against \".git#branch=main,subdir=protocol\"",
+    "branding:sync": "node tools/sync-branding.mjs",
+    "branding:check": "node tools/sync-branding.mjs --check",
+    "gen:check": "pnpm tokens:check && pnpm branding:check"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "1.73.0",
+    "@bufbuild/protoc-gen-es": "2.16.0"
+  }
+}

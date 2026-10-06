@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Events reported by a phone to its controllers.
+syntax = "proto3";
+
+package bastion.v1;
+
+import "bastion/v1/commands.proto";
+
+option java_multiple_files = true;
+option java_package = "org.bastion.protocol.v1";
+
+message Event {
+  oneof kind {
+    LocationReport location = 1;
+    StatusReport status = 2;
+    Alert alert = 3;
+    PhotoReport photo = 4;
+    LastChanceBeacon last_chance = 5;
+  }
+}
+
+message Location {
+  // WGS84 degrees.
+  double latitude = 1;
+  double longitude = 2;
+  // Horizontal accuracy radius, metres (68% confidence).
+  float accuracy_m = 3;
+  // Optional fields; has_* semantics via proto3 optional.
+  optional double altitude_m = 4;
+  optional float speed_mps = 5;
+  optional float bearing_deg = 6;
+  enum Provider {
+    PROVIDER_UNSPECIFIED = 0;
+    PROVIDER_GPS = 1;
+    PROVIDER_NETWORK = 2;
+    PROVIDER_PASSIVE = 3;
+  }
+  Provider provider = 7;
+  // Fix time, Unix epoch milliseconds.
+  int64 fix_time_ms = 8;
+}
+
+message LocationReport {
+  repeated Location locations = 1;
+}
+
+message BatteryState {
+  // 0..100.
+  uint32 level_percent = 1;
+  bool charging = 2;
+}
+
+enum NetworkType {
+  NETWORK_TYPE_UNSPECIFIED = 0;
+  NETWORK_TYPE_NONE = 1;
+  NETWORK_TYPE_WIFI = 2;
+  NETWORK_TYPE_CELLULAR = 3;
+  NETWORK_TYPE_ETHERNET = 4;
+  NETWORK_TYPE_OTHER = 5;
+}
+
+// Each protection feature and its health, as shown on the phone's Health screen.
+message ProtectionHealth {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_ACTIVE = 1;
+    STATE_DISABLED = 2;
+    STATE_DEGRADED = 3;
+  }
+  // Stable machine identifier, e.g. "location", "device_admin", "battery_exemption".
+  string feature = 1;
+  State state = 2;
+  // Machine-readable reason, e.g. "permission_revoked".
+  string reason_code = 3;
+}
+
+message StatusReport {
+  BatteryState battery = 1;
+  NetworkType network = 2;
+  TrackingMode tracking_mode = 3;
+  bool lost_mode = 4;
+  bool vpn_connected = 5;
+  repeated ProtectionHealth health = 6;
+  // App version name, informational.
+  string app_version = 7;
+}
+
+message Alert {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    TYPE_SIM_CHANGED = 1;
+    TYPE_SIM_REMOVED = 2;
+    TYPE_FAILED_UNLOCK = 3;
+    TYPE_GEOFENCE_EXIT = 4;
+    TYPE_GEOFENCE_ENTER = 5;
+    TYPE_BATTERY_CRITICAL = 6;
+    TYPE_SEPARATION = 7;
+    TYPE_PROTECTION_WEAKENED = 8;
+    TYPE_NETWORK_CUT = 9;
+    TYPE_MOTION_DETECTED = 10;
+    TYPE_ADMIN_DISABLE_REQUESTED = 11;
+    TYPE_SHUTDOWN = 12;
+  }
+  Type type = 1;
+  optional Location location = 2;
+  // Type-specific machine-readable detail, e.g. failed attempt count or geofence id.
+  map<string, string> detail = 3;
+  // message_id of an associated PhotoReport, if any.
+  bytes photo_message_id = 4;
+}
+
+message PhotoReport {
+  // JPEG, max 384 KiB (enforced before encryption).
+  bytes jpeg = 1;
+  int64 captured_at_ms = 2;
+  optional Location location = 3;
+}
+
+message LastChanceBeacon {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    REASON_BATTERY_LOW = 1;
+    REASON_AIRPLANE_MODE = 2;
+    REASON_NETWORK_LOST = 3;
+    REASON_SHUTDOWN = 4;
+  }
+  Reason reason = 1;
+  optional Location location = 2;
+  BatteryState battery = 3;
+}

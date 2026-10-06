@@ -57,7 +57,9 @@ WireGuard), empreinte SPKI SHA-256 du certificat TLS du relay, clé publique Wir
 3. `POST /v1/enroll` avec `EnrollRequest` :
    * `token_hash`, clés publiques du téléphone, clé publique WireGuard ;
    * `proof = BLAKE2b-256(key=token, "bastion-enroll-v1" ‖ phone.IK.pub ‖ phone.XK.pub ‖ wg.pub ‖ pc.IK.pub)` ;
-   * `signature = Sign(phone.IK, transcript)` sur les champs ci-dessus.
+   * `signature = Sign(phone.IK, "bastion-enroll-sig-v1" ‖ token_hash ‖ IK.pub ‖ XK.pub ‖ XKsig ‖ u32be(epoch) ‖ wg.pub ‖ proof ‖ u32be(role))`.
+     La signature porte toujours sur une transcription explicite, jamais sur une sérialisation
+     Protobuf (non canonique).
 4. Le relay vérifie que `token_hash` existe, n'est pas expiré, **l'invalide atomiquement**
    (usage unique, même en cas d'échec ultérieur), vérifie la signature, attribue une IP dans
    `10.77.0.0/24` (IPv4) / `fd77::/64` (IPv6), ajoute le pair WireGuard et renvoie

@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Application messages (end-to-end encrypted). See docs/PROTOCOL.md §5.3.
+syntax = "proto3";
+
+package bastion.v1;
+
+import "bastion/v1/commands.proto";
+import "bastion/v1/events.proto";
+
+option java_multiple_files = true;
+option java_package = "org.bastion.protocol.v1";
+
+message MessageBody {
+  // Application protocol version (anti-downgrade, see PROTOCOL.md §6.7).
+  uint32 protocol_version = 1;
+  // 16 random bytes, unique per message.
+  bytes message_id = 2;
+  // Strictly increasing per (sender, recipient) direction.
+  uint64 counter = 3;
+  // Sender wall clock, Unix epoch milliseconds.
+  int64 timestamp_ms = 4;
+  // Validity window. Defaults to 60 when 0; capped per payload type by the receiver.
+  uint32 ttl_seconds = 5;
+
+  oneof payload {
+    // Controller -> phone.
+    Command command = 10;
+    // Phone -> controller.
+    Event event = 11;
+    // Both directions.
+    KeyRotation key_rotation = 12;
+    CommandResult command_result = 13;
+  }
+}
+
+// Announces a new X25519 key; signed by the identity key (PROTOCOL.md §4).
+message KeyRotation {
+  uint32 new_epoch = 1;
+  // 32 bytes.
+  bytes x25519_public_key = 2;
+  // Ed25519("bastion-xk-v1" || x25519_public_key || u32be(new_epoch)).
+  bytes x25519_signature = 3;
+}
+
+message CommandResult {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_ACCEPTED = 1;
+    STATUS_COMPLETED = 2;
+    STATUS_FAILED = 3;
+    STATUS_REJECTED = 4;
+    STATUS_UNSUPPORTED = 5;
+    STATUS_CANCELLED = 6;
+  }
+
+  // message_id of the command this result refers to.
+  bytes command_message_id = 1;
+  Status status = 2;
+  // Machine-readable reason (e.g. "device_admin_inactive"). Never free-form user data.
+  string reason_code = 3;
+}

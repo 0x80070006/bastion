@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Wire format visible to the relay. See docs/PROTOCOL.md §5.
+syntax = "proto3";
+
+package bastion.v1;
+
+option java_multiple_files = true;
+option java_package = "org.bastion.protocol.v1";
+
+// Outer envelope. Only this header is visible to the relay; everything else is
+// XChaCha20-Poly1305 ciphertext with the header bound as AAD.
+message Envelope {
+  // Envelope format version. Currently 1.
+  uint32 version = 1;
+  // 16 bytes: BLAKE2b-128 of the sender identity key.
+  bytes sender_id = 2;
+  // 16 bytes: BLAKE2b-128 of the recipient identity key.
+  bytes recipient_id = 3;
+  // Session key epoch (incremented on X25519 key rotation).
+  uint32 key_epoch = 4;
+  // 24 random bytes (XChaCha20 nonce).
+  bytes nonce = 5;
+  // AEAD(SignedMessage).
+  bytes ciphertext = 6;
+}
+
+// Plaintext carried inside Envelope.ciphertext.
+message SignedMessage {
+  // Serialized MessageBody.
+  bytes body = 1;
+  // Ed25519 signature by the sender identity key over
+  // "bastion-msg-v1" || AAD || body.
+  bytes signature = 2;
+  // Optional Ed25519 counter-signature by the controller privileged key (PK),
+  // mandatory for sensitive commands (Lock, Wipe, Unpair).
+  bytes privileged_signature = 3;
+}

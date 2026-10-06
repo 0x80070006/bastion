@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Commands sent by a controller (desktop) to a phone.
+syntax = "proto3";
+
+package bastion.v1;
+
+option java_multiple_files = true;
+option java_package = "org.bastion.protocol.v1";
+
+message Command {
+  oneof kind {
+    Ring ring = 1;
+    StopRing stop_ring = 2;
+    LocateNow locate_now = 3;
+    SetTrackingMode set_tracking_mode = 4;
+    LostMode lost_mode = 5;
+    // Sensitive: requires privileged_signature.
+    Lock lock = 6;
+    CapturePhoto capture_photo = 7;
+    // Sensitive: requires privileged_signature.
+    Wipe wipe = 8;
+    // Sensitive: requires privileged_signature.
+    Unpair unpair = 9;
+    RequestStatus request_status = 10;
+  }
+}
+
+message Ring {
+  // 0 = until stopped from the controller or by owner authentication on the phone.
+  uint32 duration_seconds = 1;
+  bool flashlight = 2;
+  bool vibrate = 3;
+}
+
+message StopRing {}
+
+message LocateNow {
+  bool high_accuracy = 1;
+}
+
+enum TrackingMode {
+  TRACKING_MODE_UNSPECIFIED = 0;
+  // Sparse, battery-friendly reports.
+  TRACKING_MODE_STANDBY = 1;
+  // Short interval, high accuracy.
+  TRACKING_MODE_ACTIVE = 2;
+  // Active tracking + lost-mode alerts.
+  TRACKING_MODE_LOST = 3;
+}
+
+message SetTrackingMode {
+  TrackingMode mode = 1;
+  // 0 = mode default.
+  uint32 interval_seconds = 2;
+}
+
+// Owner contact info shown on the lock screen. Must not contain personal data
+// beyond what the owner explicitly typed.
+message ContactCard {
+  // Max 280 UTF-8 characters, enforced by the receiver.
+  string message = 1;
+  // Max 64 characters.
+  string phone = 2;
+  // Max 128 characters.
+  string email = 3;
+}
+
+message LostMode {
+  bool enabled = 1;
+  ContactCard contact = 2;
+}
+
+message Lock {
+  ContactCard contact = 1;
+}
+
+message CapturePhoto {
+  enum Camera {
+    CAMERA_UNSPECIFIED = 0;
+    CAMERA_FRONT = 1;
+    CAMERA_BACK = 2;
+  }
+  Camera camera = 1;
+}
+
+message Wipe {
+  // Also wipe adopted/external storage when the OS allows it.
+  bool include_external_storage = 1;
+}
+
+message Unpair {}
+
+message RequestStatus {}
