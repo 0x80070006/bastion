@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = ["crates/bastion-proto", "relay", "desktop/src-tauri"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+repository = "https://example.invalid/bastion"
+publish = false
+
+[workspace.dependencies]
+bastion-proto = { path = "crates/bastion-proto" }
+prost = "0.14.4"
+prost-build = "0.14.4"
+protoc-bin-vendored = "3.3.0"
+axum = "0.8.9"
+tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tower = "0.5"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+tauri = { version = "2.12.1", features = [] }
+tauri-build = { version = "2.7.1", features = [] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+module_name_repetitions = "allow"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

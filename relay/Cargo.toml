@@ -1,0 +1,25 @@
+[package]
+name = "bastion-relay"
+version = "0.1.0"
+description = "Bastion relay: WireGuard endpoint and end-to-end encrypted mailbox"
+license = "AGPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bastion-proto.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+http-body-util = "0.1"
+
+[lints]
+workspace = true
