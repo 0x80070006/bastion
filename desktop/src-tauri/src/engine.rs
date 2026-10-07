@@ -34,6 +34,8 @@ use crate::vault::SealedPrivilegedKey;
 pub const SKEW_MS: i64 = 30_000;
 const DEFAULT_TTL_S: u32 = 60;
 const EVENT_TTL_MAX_S: u32 = 7 * 24 * 3600;
+/// Default X25519 key rotation period (PROTOCOL.md §4).
+const ROTATION_INTERVAL_MS: i64 = 7 * 24 * 3600 * 1000;
 const MAX_SEEN_IDS: usize = 4096;
 const MAX_LOCATIONS_PER_REPORT: usize = 64;
 /// Lifetime of a pairing invitation.
@@ -193,6 +195,7 @@ impl Session {
             identity_seed: Secret(identity.seed().to_vec()),
             exchange_secret: Secret(exchange.secret().to_vec()),
             exchange_epoch: 0,
+            exchange_rotated_ms: 0,
             privileged_public: privileged.public().to_vec(),
             privileged_sealed: SealedPrivilegedKey::seal(password, &privileged.seed(), params)?,
             relay,
@@ -814,6 +817,63 @@ impl Session {
         self.seal_with_id(index, payload, ttl, privileged, now_ms, random::bytes())
     }
 
+    /// Whether the controller's own `XK` is due for rotation (PROTOCOL.md §4).
+    #[must_use]
+    pub fn should_rotate_self(&self, now_ms: i64) -> bool {
+        let has_active = self
+            .data
+            .devices
+            .iter()
+            .any(|d| d.state == PairingState::Active);
+        let last = if self.data.exchange_rotated_ms > 0 {
+            self.data.exchange_rotated_ms
+        } else {
+            self.data
+                .devices
+                .iter()
+                .map(|d| d.paired_at_ms)
+                .min()
+                .unwrap_or(now_ms)
+        };
+        has_active && now_ms - last >= ROTATION_INTERVAL_MS
+    }
+
+    /// Rotates the controller's `XK`: a signed `KeyRotation` is sent to every active device
+    /// under the current epoch, then the new key becomes current for later messages.
+    ///
+    /// # Errors
+    /// [`AppError::Internal`].
+    pub fn rotate_self(&mut self, now_ms: i64) -> AppResult<Vec<Action>> {
+        let new_epoch = self.exchange.epoch() + 1;
+        let new_xk = ExchangeKeypair::generate(new_epoch);
+        let keys = new_xk.signed_by(&self.identity);
+        let rotation = KeyRotation {
+            new_epoch,
+            x25519_public_key: keys.exchange.to_vec(),
+            x25519_signature: keys.exchange_signature.to_vec(),
+        };
+        let active: Vec<usize> = self
+            .data
+            .devices
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.state == PairingState::Active)
+            .map(|(i, _)| i)
+            .collect();
+        let mut actions = Vec::with_capacity(active.len());
+        for index in active {
+            let payload = message_body::Payload::KeyRotation(rotation.clone());
+            actions.push(self.seal_to(index, payload, EVENT_TTL_MAX_S, None, now_ms)?);
+        }
+        // Swap to the new key only after every rotation message was sealed under the old one.
+        self.exchange = new_xk;
+        self.data.exchange_secret = Secret(self.exchange.secret().to_vec());
+        self.data.exchange_epoch = new_epoch;
+        self.data.exchange_rotated_ms = now_ms;
+        self.data.log(now_ms, None, "keys.rotated", None);
+        Ok(actions)
+    }
+
     fn seal_with_id(
         &mut self,
         index: usize,
@@ -1029,8 +1089,27 @@ mod tests {
                 exchange: session.exchange.public(),
             };
             let key = directional_key(&self.xk, &me, &pc).unwrap();
-            let header = Header::new(self.ik.device_id(), session.identity.device_id(), 0);
+            let header = Header::new(
+                self.ik.device_id(),
+                session.identity.device_id(),
+                self.xk.epoch(),
+            );
             envelope::seal(&key, &header, &self.ik, None, &body.encode_to_vec())
+        }
+
+        // Rotates the phone's X25519 key: the KeyRotation is sealed under the old key, then the
+        // new key becomes current.
+        fn rotate(&mut self, session: &Session, timestamp: i64) -> Vec<u8> {
+            let new_xk = ExchangeKeypair::generate(self.xk.epoch() + 1);
+            let keys = new_xk.signed_by(&self.ik);
+            let rotation = message_body::Payload::KeyRotation(KeyRotation {
+                new_epoch: new_xk.epoch(),
+                x25519_public_key: keys.exchange.to_vec(),
+                x25519_signature: keys.exchange_signature.to_vec(),
+            });
+            let envelope = self.envelope(session, rotation, timestamp);
+            self.xk = new_xk;
+            envelope
         }
 
         fn open(&self, session: &Session, action: &Action) -> MessageBody {
@@ -1296,6 +1375,43 @@ mod tests {
     fn enum_names_are_camel_cased() {
         assert_eq!(camel("TYPE_SIM_REMOVED", "TYPE_"), "simRemoved");
         assert_eq!(camel("REASON_SHUTDOWN", "REASON_"), "shutdown");
+    }
+
+    #[test]
+    fn phone_key_rotation_is_applied_and_comms_continue() {
+        let (mut s, mut phone) = paired();
+        let id = phone.ik.device_id();
+        assert_eq!(s.data.devices[0].epoch, 0);
+        // The phone rotates; the controller must adopt the new epoch and key.
+        let rotation = phone.rotate(&s, NOW);
+        s.handle_item(1, &id, &rotation, NOW);
+        assert_eq!(s.data.devices[0].epoch, 1);
+        // A message under the new key is accepted; a replay of the rotation is ignored.
+        let status = message_body::Payload::Event(Event {
+            kind: Some(event::Kind::Status(bastion_proto::v1::StatusReport {
+                lost_mode: true,
+                ..Default::default()
+            })),
+        });
+        s.handle_item(1, &id, &phone.envelope(&s, status, NOW), NOW);
+        assert!(s.data.devices[0].status.as_ref().unwrap().lost_mode);
+        assert!(!s.should_rotate_self(NOW));
+    }
+
+    #[test]
+    fn controller_rotates_its_own_key_when_due() {
+        let (mut s, _phone) = paired();
+        assert!(!s.should_rotate_self(NOW));
+        // Eight days later it is due; rotation bumps the epoch and messages each active device.
+        let later = NOW + 8 * 24 * 3600 * 1000;
+        assert!(s.should_rotate_self(later));
+        let before = s.data.exchange_epoch;
+        let actions = s.rotate_self(later).unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::Send { .. }));
+        assert_eq!(s.data.exchange_epoch, before + 1);
+        assert_eq!(s.exchange.epoch(), before + 1);
+        assert!(!s.should_rotate_self(later));
     }
 
     fn jpeg(byte: u8) -> Vec<u8> {

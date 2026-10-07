@@ -35,6 +35,8 @@ message Pairing {
   int64 paired_at_ms = 18;
   int64 last_contact_ms = 19;
   bool enrolled = 20;
+  // When this device last rotated its X25519 key (0 = never since pairing).
+  int64 last_rotation_ms = 21;
 }
 
 message SeenId {
@@ -50,6 +52,8 @@ message ProtectionSettings {
   string contact_phone = 4;
   string contact_email = 5;
   bool protection_enabled = 6;
+  // Last seen SIM operator (MCC+MNC); used to detect a SIM swap. Never sent over the network.
+  string sim_operator = 7;
 }
 
 message JournalEntry {

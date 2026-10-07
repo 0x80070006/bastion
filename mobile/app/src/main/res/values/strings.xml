@@ -7,6 +7,8 @@
     <string name="notif_alarm_text">Ouvrez l\'application pour l\'arrêter.</string>
     <string name="notif_lost_title">Téléphone perdu</string>
     <string name="notif_lost_text">Touchez pour afficher les coordonnées du propriétaire.</string>
+    <string name="lost_default_message">Ce téléphone a été perdu. Merci de contacter son propriétaire.</string>
+    <string name="lost_call">Appelez le %1$s.</string>
     <string name="channel_protection">Protection</string>
     <string name="channel_alarm">Sonnerie à distance</string>
     <string name="channel_lost">Mode Perdu</string>

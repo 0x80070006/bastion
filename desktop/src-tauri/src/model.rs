@@ -273,6 +273,9 @@ pub struct VaultData {
     pub exchange_secret: Secret,
     /// Epoch of `XK`.
     pub exchange_epoch: u32,
+    /// When `XK` was last rotated (0 = never since creation).
+    #[serde(default)]
+    pub exchange_rotated_ms: i64,
     /// Privileged key `PK` public half.
     #[serde(with = "b64")]
     pub privileged_public: Vec<u8>,
@@ -333,6 +336,7 @@ impl VaultData {
             identity_seed: Secret(vec![1; 32]),
             exchange_secret: Secret(vec![2; 32]),
             exchange_epoch: 0,
+            exchange_rotated_ms: 0,
             privileged_public: vec![3; 32],
             privileged_sealed: SealedPrivilegedKey::seal(
                 "correct horse battery",

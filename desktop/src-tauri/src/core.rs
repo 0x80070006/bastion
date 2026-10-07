@@ -567,6 +567,7 @@ impl AppCore {
                     if !batch.items.is_empty() {
                         self.process(&client, generation, batch).await;
                     }
+                    self.maybe_rotate_keys().await;
                 }
                 Err(error) => {
                     self.set_connection(if error == AppError::RelayPinMismatch {
@@ -647,6 +648,22 @@ impl AppCore {
 
     fn save(paths: &Paths, unlocked: &Unlocked) -> AppResult<()> {
         vault::write_atomic(&paths.vault, &unlocked.key.seal(&unlocked.session.data)?)
+    }
+
+    /// Rotates the controller's X25519 key when due (PROTOCOL.md §4), persisting before send.
+    async fn maybe_rotate_keys(&self) {
+        let due = {
+            let guard = self.state.lock().await;
+            guard
+                .as_ref()
+                .is_some_and(|u| u.session.should_rotate_self(now_ms()))
+        };
+        if !due {
+            return;
+        }
+        if let Err(error) = self.mutate(|s| Ok(((), s.rotate_self(now_ms())?))).await {
+            tracing::warn!(%error, "key rotation failed");
+        }
     }
 
     /// Persists photos to the encrypted media store and forwards live frames to the webview.

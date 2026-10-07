@@ -32,6 +32,7 @@ import org.bastion.core.domain.model.ContactCard
 import org.bastion.mobile.data.AgentRepository
 import org.bastion.mobile.data.RelayException
 import org.bastion.mobile.ui.LostModeActivity
+import org.bastion.protocol.v1.Alert
 import org.bastion.protocol.v1.CapturePhoto
 import org.bastion.protocol.v1.CommandResult.Status
 import org.bastion.protocol.v1.Event
@@ -209,11 +210,31 @@ class ProtectionService : Service() {
         periodic?.cancel()
         periodic = scope.launch {
             while (isActive) {
+                checkSim()
+                if (repository.shouldRotate()) repository.rotateKeys()
                 sendStatus()
                 delay(STATUS_PERIOD_MS)
             }
         }
         if (repository.state.value.settings.lostMode) showLost()
+    }
+
+    /** Detects a SIM swap or removal (a thief changing the SIM) and alerts the controller. */
+    private suspend fun checkSim() {
+        val current = device.simOperator()
+        val stored = repository.state.value.settings.simOperator
+        if (stored == current) return
+        updateSettings { it.setSimOperator(current) }
+        if (stored.isEmpty()) return // First observation: just record it, no alert.
+        val (type, detail) = if (current.isEmpty()) {
+            Alert.Type.TYPE_SIM_REMOVED to emptyMap()
+        } else {
+            Alert.Type.TYPE_SIM_CHANGED to mapOf("operator" to device.simOperatorName().ifBlank { current })
+        }
+        val alert = Alert.newBuilder().setType(type).putAllDetail(detail)
+        locator.lastKnown()?.let { alert.setLocation(Locator.toProto(it)) }
+        repository.sendEvent(Event.newBuilder().setAlert(alert).build())
+        repository.log("alert.${type.name}")
     }
 
     @Suppress("LoopWithTooManyJumpStatements")

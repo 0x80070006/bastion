@@ -7,6 +7,8 @@
     <string name="notif_alarm_text">Open the app to stop it.</string>
     <string name="notif_lost_title">Lost phone</string>
     <string name="notif_lost_text">Tap to show the owner\'s contact details.</string>
+    <string name="lost_default_message">This phone was lost. Please contact its owner.</string>
+    <string name="lost_call">Please call %1$s.</string>
     <string name="channel_protection">Protection</string>
     <string name="channel_alarm">Remote ring</string>
     <string name="channel_lost">Lost mode</string>

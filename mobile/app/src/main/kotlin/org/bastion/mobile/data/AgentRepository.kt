@@ -155,6 +155,20 @@ class AgentRepository @Inject constructor(
         return deliver(controller, envelope)
     }
 
+    fun shouldRotate(): Boolean = agent.shouldRotate(_state.value, System.currentTimeMillis())
+
+    /** Rotates the X25519 key and notifies the controller (PROTOCOL.md §4). */
+    suspend fun rotateKeys(): Boolean {
+        val controller = controllerId() ?: return false
+        val envelope = transact { s ->
+            agent.rotateExchangeKey(s, System.currentTimeMillis())?.let { (st, env) -> st to (env as ByteArray?) }
+                ?: (s to null)
+        } ?: return false
+        val delivered = deliver(controller, envelope)
+        if (delivered) log("keys.rotated")
+        return delivered
+    }
+
     suspend fun deliver(recipient: ByteArray, envelope: ByteArray): Boolean = runCatching {
         client()?.send(recipient, envelope)
         true
