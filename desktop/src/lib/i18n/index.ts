@@ -23,10 +23,18 @@ export type Translate = (key: MessageKey, params?: Record<string, string | numbe
 export function translator(locale: Locale): Translate {
   const catalog = catalogs[locale];
   return (key, params = {}) =>
-    catalog[key].replace(/\{(\w+)\}/g, (match, name: string) => {
+    (catalog[key] ?? key).replace(/\{(\w+)\}/g, (match, name: string) => {
       const value = params[name];
       return value === undefined ? match : String(value);
     });
 }
 
 export const catalogKeys = (locale: Locale): string[] => Object.keys(catalogs[locale]).sort();
+
+/** Locale of this session, from the OS language preferences. */
+export const locale: Locale = resolveLocale(
+  typeof navigator === "undefined" ? [] : navigator.languages,
+);
+
+/** Translator of this session. */
+export const t: Translate = translator(locale);

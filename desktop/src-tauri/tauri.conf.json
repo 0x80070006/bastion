@@ -27,7 +27,7 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
-        "img-src": "'self' data: blob:",
+        "img-src": "'self' data: blob: tiles: http://tiles.localhost",
         "font-src": "'self'",
         "connect-src": "ipc: http://ipc.localhost",
         "worker-src": "'self' blob:",
