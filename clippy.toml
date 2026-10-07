@@ -2,3 +2,4 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-print-in-tests = true
+doc-valid-idents = ["..", "BLAKE2b", "IPsec", "WireGuard", "XChaCha20", "SQLite", "SQLCipher", "GrapheneOS", "OpenStreetMap", "WebView"]

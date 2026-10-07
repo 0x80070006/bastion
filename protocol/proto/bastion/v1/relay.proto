@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Relay HTTP API payloads. See docs/PROTOCOL.md §8.
+syntax = "proto3";
+
+package bastion.v1;
+
+option java_multiple_files = true;
+option java_package = "org.bastion.protocol.v1";
+
+// One item of a mailbox. The relay never interprets `payload`.
+message MailboxItem {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // Serialized Envelope.
+    KIND_ENVELOPE = 1;
+    // PairingHello sealed to the controller (crypto_box_seal), from EnrollRequest.sealed_hello.
+    KIND_PAIRING_HELLO = 2;
+  }
+  // Relay-assigned identifier, used for acknowledgement.
+  uint64 id = 1;
+  Kind kind = 2;
+  // 16 bytes: authenticated device that deposited the item.
+  bytes sender_id = 3;
+  bytes payload = 4;
+  // Relay clock, Unix epoch milliseconds.
+  int64 received_at_ms = 5;
+}
+
+// GET /v1/mailbox response (at most 64 items).
+message MailboxBatch {
+  repeated MailboxItem items = 1;
+}
+
+// POST /v1/mailbox/ack request: deletes the listed items from the caller mailbox.
+message MailboxAck {
+  repeated uint64 ids = 1;
+}
+
+// Relay error body. `code` is machine-readable and never echoes request data.
+message RelayError {
+  string code = 1;
+}

@@ -6,6 +6,7 @@ package bastion.v1;
 
 import "bastion/v1/commands.proto";
 import "bastion/v1/events.proto";
+import "bastion/v1/pairing.proto";
 
 option java_multiple_files = true;
 option java_package = "org.bastion.protocol.v1";
@@ -30,6 +31,8 @@ message MessageBody {
     // Both directions.
     KeyRotation key_rotation = 12;
     CommandResult command_result = 13;
+    // Both directions, once the user confirmed the SAS on the sending device.
+    PairingConfirm pairing_confirm = 14;
   }
 }
 

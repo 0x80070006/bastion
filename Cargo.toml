@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bastion-proto", "relay", "desktop/src-tauri"]
+members = ["crates/bastion-proto", "crates/bastion-crypto", "relay", "desktop/src-tauri"]
 
 [workspace.package]
 edition = "2024"
@@ -10,6 +10,21 @@ publish = false
 
 [workspace.dependencies]
 bastion-proto = { path = "crates/bastion-proto" }
+bastion-crypto = { path = "crates/bastion-crypto" }
+bastion-relay = { path = "relay" }
+# Cryptography: pure-Rust, byte-compatible with libsodium (ADR-0016).
+ed25519-dalek = { version = "2.2", features = ["zeroize"] }
+x25519-dalek = { version = "2.0.1", features = ["static_secrets", "zeroize"] }
+chacha20poly1305 = "0.10.1"
+blake2 = "0.10.6"
+argon2 = { version = "0.5.3", features = ["zeroize"] }
+crypto_box = { version = "0.9.1", features = ["seal", "std"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+sha2 = "0.10.9"
+subtle = "2.6.1"
+zeroize = { version = "1.8", features = ["derive"] }
+hex = "0.4.3"
+base64 = "0.22.1"
 prost = "0.14.4"
 prost-build = "0.14.4"
 protoc-bin-vendored = "3.3.0"

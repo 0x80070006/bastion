@@ -65,6 +65,9 @@ message EnrollRequest {
   // Ed25519 by the device identity key over the explicit transcript defined in
   // docs/PROTOCOL.md §3.2 (never over a protobuf serialization, which is not canonical).
   bytes signature = 6;
+  // Phone only: PairingHello sealed (crypto_box_seal) to the controller X25519 key. The relay
+  // stores it in the controller mailbox atomically with the enrollment; it cannot open it.
+  bytes sealed_hello = 7;
 }
 
 message EnrollResponse {
@@ -91,7 +94,8 @@ message PairingHello {
   uint32 max_protocol_version = 4;
 }
 
-// Controller -> phone, once the user confirmed the SAS on the controller.
+// Sent in both directions inside a regular Envelope once the user confirmed the SAS on the
+// sending device. A pairing becomes ACTIVE when both sides confirmed.
 message PairingConfirm {
   bool confirmed = 1;
   uint32 negotiated_protocol_version = 2;
