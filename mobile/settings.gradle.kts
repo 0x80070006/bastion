@@ -26,6 +26,7 @@ include(
     ":app",
     ":core:designsystem",
     ":core:domain",
+    ":core:agent",
     ":core:crypto",
     ":core:protocol",
     ":core:vpn",
