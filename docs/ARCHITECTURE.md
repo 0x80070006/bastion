@@ -1,5 +1,8 @@
 # Architecture
 
+> État v0.1 : relay intégré au PC par défaut, WireGuard reporté (ADR-0019) ; voir
+> [LIMITATIONS.md](LIMITATIONS.md) pour ce qui n'est pas encore livré.
+
 > Le nom produit « Bastion » est provisoire. Il est défini **une seule fois** dans
 > [`branding/product.json`](../branding/product.json) et lu par Gradle, Cargo et Vite au build.
 
@@ -60,6 +63,7 @@ et de cryptographie.
 :feature:remote          exécution des commandes distantes, journal de sécurité
 :core:designsystem       thème Compose 100 % custom, tokens générés, composants
 :core:domain             entités, interfaces de dépôts, cas d'usage (Kotlin pur, JVM)
+:core:agent              moteur protocolaire du téléphone, état local (Kotlin pur, ADR-0020)
 :core:crypto             identités, enveloppe E2E, anti-rejeu (Kotlin pur + libsodium)
 :core:protocol           code Protobuf généré (lite) + codecs/validation (Kotlin pur)
 :core:vpn                intégration com.wireguard.android:tunnel, stockage Keystore

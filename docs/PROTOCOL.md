@@ -1,227 +1,194 @@
 # Protocole Bastion — v1
 
-Statut : **brouillon normatif** (jalon 1). Les définitions Protobuf font foi :
-[`protocol/proto/bastion/v1`](../protocol/proto/bastion/v1). Toute évolution passe par
-`buf breaking` et un ADR.
+Statut : **normatif, implémenté** (Rust : `crates/bastion-crypto`, relay, desktop ; Kotlin :
+`mobile/core/crypto`, `mobile/core/agent`). Les définitions Protobuf font foi :
+[`protocol/proto/bastion/v1`](../protocol/proto/bastion/v1). L'interopérabilité octet par octet
+des deux implémentations est vérifiée par les vecteurs partagés
+[`protocol/testvectors/v1.txt`](../protocol/testvectors/v1.txt) (générés par Rust, recalculés par
+Kotlin/libsodium en CI). Toute évolution passe par `buf breaking` et un ADR.
 
 Mots-clés DOIT / NE DOIT PAS / DEVRAIT au sens RFC 2119.
 
-## 1. Primitives (libsodium uniquement)
+## 1. Primitives
 
-| Usage | Primitive libsodium |
+| Usage | Primitive (équivalent libsodium) |
 |---|---|
-| Signature d'identité | Ed25519 (`crypto_sign_detached`) |
-| Accord de clé | X25519 (`crypto_scalarmult`) |
-| Chiffrement authentifié | XChaCha20-Poly1305 IETF (`crypto_aead_xchacha20poly1305_ietf_*`) |
-| Hachage / KDF / MAC | BLAKE2b (`crypto_generichash`, avec clé pour MAC/KDF) |
-| Dérivation de mot de passe | Argon2id (`crypto_pwhash`, `OPSLIMIT_MODERATE`, `MEMLIMIT_MODERATE`) |
-| Aléa | `randombytes_buf` |
+| Signature | Ed25519 détachée (`crypto_sign_detached`), vérification stricte (clés de petit ordre refusées) |
+| Accord de clé | X25519 (`crypto_scalarmult`) ; un secret tout à zéro est refusé |
+| Chiffrement authentifié | XChaCha20-Poly1305 IETF |
+| Hachage / KDF / MAC | BLAKE2b (`crypto_generichash`), clé de 16 à 64 octets |
+| Boîte scellée | `crypto_box_seal` |
+| Mot de passe (PC) | Argon2id v1.3, 1 voie (`OPSLIMIT_MODERATE`/`MEMLIMIT_MODERATE` : 3 passes, 256 Mio) |
+| Aléa | CSPRNG du système |
 
-Aucune construction cryptographique maison au-delà de la composition documentée ici.
-Les chaînes de contexte (`"bastion-…-v1"`) sont des constantes ASCII sans terminateur.
+Côté Android : libsodium (lazysodium). Côté Rust : implémentations RustCrypto/dalek
+compatibles (ADR-0016). Aucune construction au-delà de la composition documentée ici.
+
+### 1.1 Transcriptions
+
+Toute entrée signée ou hachée est une **transcription** non ambiguë, jamais une sérialisation
+Protobuf (non canonique) :
+
+```
+T(ctx, f1, …, fn) = u32be(len(ctx)) ‖ ctx ‖ u32be(len(f1)) ‖ f1 ‖ … ‖ u32be(len(fn)) ‖ fn
+```
+
+Les entiers sont des champs à largeur fixe big-endian (`u32be`, `u64be`), eux aussi préfixés de
+leur longueur. Contextes (ASCII) : `bastion-xk-v1`, `bastion-invite-v1`, `bastion-enroll-v1`,
+`bastion-enroll-sig-v1`, `bastion-sas-v1`, `bastion-session-v1`, `bastion-session-key-v1`,
+`bastion-env-v1`, `bastion-msg-v1`, `bastion-req-v1`, `bastion-fp-v1`.
 
 ## 2. Identités
 
-Chaque appareil génère localement :
+Chaque appareil génère localement (le téléphone en génère de nouvelles à chaque appairage) :
 
-* `IK` : paire Ed25519 (identité, signature) ;
-* `XK` : paire X25519 (accord de clé), **signée** par `IK` (`XKsig = Sign(IK, "bastion-xk-v1" ‖ XK.pub ‖ epoch_u32be)`) ;
-* `device_id` : 16 octets = `BLAKE2b-128(IK.pub)`.
+* `IK` : Ed25519 ; `device_id = BLAKE2b-128(IK.pub)` ;
+* `XK` : X25519 d'époque `e`, signée : `XKsig = Sign(IK, T("bastion-xk-v1", XK.pub, u32be(e)))`.
 
-**Empreinte affichée** : `BLAKE2b-256(IK.pub ‖ XK.pub)` en hexadécimal, groupes de 4, 8
-premiers groupes (police monospace).
+Empreinte affichée : `BLAKE2b-256(T("bastion-fp-v1", IK.pub, XK.pub))`, 16 premiers octets en
+hexadécimal, 8 groupes de 4.
 
-Les clés privées ne quittent jamais l'appareil (Keystore Android / coffre OS + Argon2id sur PC).
-
-Le PC possède en plus une clé **Ed25519 de commande privilégiée** `PK`, stockée uniquement sous
-la clé dérivée du mot de passe maître (jamais dans le coffre OS seul). Elle n'est déverrouillée
-qu'après ré-authentification et sert à contresigner les commandes sensibles (§7).
+Le PC possède une clé Ed25519 de **commande privilégiée** `PK`, scellée dans son coffre sous une
+clé Argon2id(mot de passe maître, sel propre) distincte de la clé du coffre : elle n'est
+déchiffrée qu'après ré-authentification, puis effacée.
 
 ## 3. Appairage
 
 ### 3.1 Invitation (QR)
 
-Le PC demande au relay une invitation : il génère `token` (16 octets aléatoires, 128 bits) et
-envoie au relay `token_hash = BLAKE2b-256(key="bastion-invite-v1", token)` avec un TTL ≤ 300 s.
-Le relay ne connaît jamais `token`.
+Le PC tire `token` (16 octets), dépose au relay `token_hash = BLAKE2b-256(key="bastion-invite-v1",
+token)` avec une expiration ≤ 300 s (`POST /v1/invites`). Le relay ne connaît jamais `token`.
 
-Le QR contient l'URI `bastion://pair/v1#<base64url(PairingInvite)>` (le fragment n'est jamais
-transmis par un navigateur). `PairingInvite` contient : version, endpoints du relay (HTTPS +
-WireGuard), empreinte SPKI SHA-256 du certificat TLS du relay, clé publique WireGuard du relay,
-`IK.pub`/`XK.pub`/`XKsig`/`PK.pub` du PC, `token`, `expires_at`.
+QR : `bastion://pair/v1#<base64url sans remplissage(PairingInvite)>` : endpoint HTTPS du relay,
+empreinte SPKI SHA-256 de son certificat, `DeviceKeys` du PC, `PK.pub`, `token`, `expires_at`,
+nom du PC. Le téléphone DOIT refuser une invitation expirée (ou expirant à plus de 330 s), un
+endpoint non `https://` ou avec chemin/requête, et une `XKsig` invalide.
 
 ### 3.2 Enrôlement
 
-1. Le téléphone vérifie `expires_at`, la signature `XKsig`, génère `IK`, `XK`, la paire WireGuard.
-2. Il se connecte au relay en TLS 1.3 **en épinglant** l'empreinte SPKI de l'invitation.
-3. `POST /v1/enroll` avec `EnrollRequest` :
-   * `token_hash`, clés publiques du téléphone, clé publique WireGuard ;
-   * `proof = BLAKE2b-256(key=token, "bastion-enroll-v1" ‖ phone.IK.pub ‖ phone.XK.pub ‖ wg.pub ‖ pc.IK.pub)` ;
-   * `signature = Sign(phone.IK, "bastion-enroll-sig-v1" ‖ token_hash ‖ IK.pub ‖ XK.pub ‖ XKsig ‖ u32be(epoch) ‖ wg.pub ‖ proof ‖ u32be(role))`.
-     La signature porte toujours sur une transcription explicite, jamais sur une sérialisation
-     Protobuf (non canonique).
-4. Le relay vérifie que `token_hash` existe, n'est pas expiré, **l'invalide atomiquement**
-   (usage unique, même en cas d'échec ultérieur), vérifie la signature, attribue une IP dans
-   `10.77.0.0/24` (IPv4) / `fd77::/64` (IPv6), ajoute le pair WireGuard et renvoie
-   `EnrollResponse` (config de pair, `peer_id` du PC).
-   Le relay **ne peut pas** vérifier `proof` (il n'a pas `token`) ; il la transmet.
-5. Le téléphone dépose dans la boîte du PC un `PairingHello` scellé
-   (`crypto_box_seal` vers `pc.XK.pub`) contenant ses clés publiques et `proof`.
-6. Le PC vérifie `proof` avec `token` : seul quelqu'un ayant lu le QR peut la produire.
+Le téléphone génère `IK`, `XK`, puis envoie `POST /v1/enroll` (TLS 1.3 épinglé) avec
+`EnrollRequest` :
 
-### 3.3 Code de vérification (SAS anti-MITM)
+* `proof = BLAKE2b-256(key=token, T("bastion-enroll-v1", phone.IK, phone.XK, wg.pub, pc.IK))`
+  (`wg.pub` vide tant que WireGuard n'est pas implémenté) ;
+* `signature = Sign(phone.IK, T("bastion-enroll-sig-v1", token_hash, IK, XK, XKsig,
+  u32be(epoch), wg.pub, proof, u32be(role)))` ;
+* `sealed_hello = crypto_box_seal(pc.XK, PairingHello{device, proof, label, max_version})`.
+
+Le relay vérifie `XKsig` et la signature, **consomme l'invitation** (usage unique, supprimée même
+si la suite échoue), enregistre le téléphone, le lie au PC invitant et dépose `sealed_hello` dans
+la boîte du PC (élément `KIND_PAIRING_HELLO`) — de façon atomique. Il ne peut pas vérifier
+`proof`. Le PC ouvre la boîte scellée, vérifie `device_id`, `XKsig` et `proof` contre ses
+invitations en cours : seul un détenteur du QR peut produire `proof`.
+
+Le PC lui-même s'enregistre (rôle contrôleur) avec un **jeton d'administration à usage unique**
+(en-tête `Bastion-Admin-Token`), créé par le relay intégré ou par `bastion-relay admin-token`.
+
+### 3.3 Code de vérification (SAS)
 
 ```
-sas_input = BLAKE2b-256(key = token,
-            "bastion-sas-v1" ‖ min(A,B) ‖ max(A,B))       où A = pc.IK.pub‖pc.XK.pub, B = phone.IK.pub‖phone.XK.pub
-code      = (u32be(sas_input[0..4]) mod 1 000 000) affiché "123 456"
+A = pc.IK ‖ pc.XK ; B = phone.IK ‖ phone.XK
+sas  = BLAKE2b-256(key=token, T("bastion-sas-v1", min(A,B), max(A,B)))
+code = u32be(sas[0..4]) mod 10^6, affiché "123 456"
 ```
 
-Les deux écrans affichent le code ; l'utilisateur confirme sur **les deux** appareils. Tant
-qu'il n'est pas confirmé, la paire est `PENDING` et aucune commande n'est acceptée. Le biais
-du modulo (2³²/10⁶) est négligeable (< 2,4·10⁻⁴ relatif). Un mode avancé affiche l'empreinte
-complète.
+Chaque côté envoie un `PairingConfirm{confirmed}` chiffré (§5) quand l'utilisateur a comparé les
+codes. La paire n'est `ACTIVE` qu'une fois **les deux** confirmations reçues ; avant, seul
+`PairingConfirm` est accepté. Un refus d'un côté supprime la paire des deux côtés et au relay.
 
 ### 3.4 Révocation
 
-`Unpair` (commande sensible) ou action locale. Chaque côté efface les clés de session de la paire
-et notifie le relay (`DELETE /v1/peers/{id}` signé), qui retire le pair WireGuard et vide la
-boîte aux lettres.
+`DELETE /v1/peers/{id}` signé : un appareil peut se retirer lui-même, ou retirer un pair auquel il
+est lié. Le relay supprime le lien, les messages en attente entre eux, et le téléphone s'il n'a
+plus de contrôleur. `Unpair` (commande sensible) fait se retirer le téléphone après avoir
+acquitté ; un téléphone qui reçoit trois `401` consécutifs se considère désappairé.
 
 ## 4. Clés de session
 
-Pour une paire (a, b) et une époque `e` (u32) :
+Pour un message de `S` vers `R` :
 
 ```
-ss       = X25519(a.XK.priv, b.XK.pub)
-salt     = BLAKE2b-256("bastion-session-v1" ‖ min(a.IK.pub,b.IK.pub) ‖ max(...) ‖ u32be(e))
-k_a→b    = BLAKE2b-256(key = ss, salt ‖ "a2b" ‖ a.IK.pub)
-k_b→a    = BLAKE2b-256(key = ss, salt ‖ "a2b" ‖ b.IK.pub)
+ss   = X25519(local.XK, peer.XK)
+salt = BLAKE2b-256(T("bastion-session-v1", min(S.IK, R.IK), max(S.IK, R.IK)))
+key  = BLAKE2b-256(key=ss, T("bastion-session-key-v1", salt, S.IK, S.XK, R.IK, R.XK))
 ```
 
-Une clé par direction. `ss` est effacé de la mémoire après dérivation.
+Une clé par direction ; `ss` est effacé après dérivation. `KeyRotation` (signée par `IK`, époque
+strictement croissante) remplace la `XK` d'un pair ; la rotation périodique automatique n'est pas
+encore déclenchée par les applications (voir LIMITATIONS).
 
-**Rotation** : chaque appareil publie périodiquement (défaut 7 jours) une nouvelle `XK` signée
-(`KeyRotation`), qui incrémente l'époque. Les anciennes clés sont conservées au plus 24 h pour
-les messages en vol puis détruites. Cela borne la fenêtre de compromission ; v1 n'offre pas de
-confidentialité persistante par message (pas de double ratchet), choix documenté dans
-`DECISIONS.md` (ADR-0007).
+## 5. Messages
 
-## 5. Format des messages
-
-### 5.1 Enveloppe (visible du relay)
-
-```protobuf
-message Envelope {
-  uint32 version      = 1;  // version de l'enveloppe = 1
-  bytes  sender_id    = 2;  // 16 octets
-  bytes  recipient_id = 3;  // 16 octets
-  uint32 key_epoch    = 4;
-  bytes  nonce        = 5;  // 24 octets aléatoires
-  bytes  ciphertext   = 6;  // XChaCha20-Poly1305(SignedMessage)
-}
+```
+AAD       = T("bastion-env-v1", u32be(version), sender_id, recipient_id, u32be(key_epoch))
+signature = Sign(sender.IK, T("bastion-msg-v1", AAD, body))
+privileged_signature = Sign(pc.PK, même entrée)        (commandes sensibles)
+Envelope.ciphertext = XChaCha20-Poly1305(key, nonce 24 aléatoire, AAD, SignedMessage)
 ```
 
-`AAD = "bastion-env-v1" ‖ u32be(version) ‖ sender_id ‖ recipient_id ‖ u32be(key_epoch)`.
-
-### 5.2 Message signé (chiffré)
-
-```protobuf
-message SignedMessage {
-  bytes body      = 1;  // MessageBody sérialisé
-  bytes signature = 2;  // Ed25519(sender.IK, "bastion-msg-v1" ‖ AAD ‖ body)
-  bytes privileged_signature = 3;  // optionnelle : Ed25519(pc.PK, même entrée)
-}
-```
-
-Signer puis chiffrer, en liant la signature à l'en-tête : un message ne peut être ni redirigé
-vers un autre destinataire ni rejoué sous une autre époque.
-
-### 5.3 Corps
-
-`MessageBody` contient `protocol_version`, `message_id` (16 octets aléatoires),
-`counter` (u64 monotone par direction), `timestamp_ms`, `ttl_seconds`, et un `oneof payload`
-(commandes PC→téléphone, événements téléphone→PC). Voir `messages.proto`.
+`MessageBody` : `protocol_version`, `message_id` (16 octets), `counter` (u64 strictement
+croissant par direction, persisté avant envoi), `timestamp_ms`, `ttl_seconds`, `payload`
+(`Command`, `Event`, `KeyRotation`, `CommandResult`, `PairingConfirm`).
 
 ## 6. Règles de réception (DOIT, dans cet ordre)
 
-1. Taille de l'enveloppe ≤ **512 KiB** ; sinon rejet avant tout parsing.
-2. `version` connue ; `recipient_id` = soi ; `sender_id` = pair appairé `ACTIVE`.
-3. Époque connue (courante ou précédente non expirée).
-4. Déchiffrement AEAD ; échec ⇒ rejet silencieux + compteur d'anomalies.
-5. Vérification de `signature` avec `IK` du pair.
-6. Parsing de `body` (limites Protobuf : profondeur, taille de champs `bytes` ≤ 384 KiB).
-7. `protocol_version` ≥ version minimale négociée à l'appairage (**anti-downgrade**) et ≤ version locale.
-8. Fraîcheur : `now - skew ≤ timestamp + ttl` et `timestamp ≤ now + skew`, `skew = 30 s`.
-   `ttl_seconds` par défaut **60** ; plafonné par type (file hors-ligne explicite) :
-
-   | Type | TTL max |
-   |---|---|
-   | `Ring`, `LocateNow`, `CapturePhoto` | 15 min |
-   | `SetTrackingMode`, `LostMode`, `Lock` | 24 h |
-   | `Wipe` | 24 h (+ contresignature `PK` obligatoire) |
-   | événements téléphone → PC | 7 jours |
-
-9. **Anti-rejeu** : fenêtre glissante de 1024 sur `counter` (bitmap, comme IPsec/WireGuard) +
-   cache des `message_id` vus jusqu'à expiration de leur TTL. Le compteur le plus haut est
-   persisté **avant** l'exécution de la commande.
-10. Commandes sensibles : vérification de `privileged_signature` avec `pc.PK` (§7).
-
-Une commande rejetée produit un `CommandResult` d'erreur (sauf rejet aux étapes 1–5, silencieux
-pour ne pas servir d'oracle).
+1. Enveloppe ≤ 512 KiO avant tout parsing ; version 1 ; identifiants de 16 octets, nonce de 24.
+2. `recipient_id` = soi ; `sender_id` = pair connu ; `key_epoch` = époque connue du pair.
+3. Déchiffrement AEAD puis signature `IK` ; une `privileged_signature` présente mais invalide
+   rejette le message. Échecs 1–3 : **rejet silencieux** (pas d'oracle).
+4. `protocol_version` ≥ version négociée (anti-downgrade) et ≤ version locale.
+5. Paire non active : seul `PairingConfirm` est accepté.
+6. **Anti-rejeu** : fenêtre glissante de 1024 compteurs (bitmap) + cache des `message_id`
+   jusqu'à expiration ; l'état est **persisté avant** tout effet. Un rejeu est ignoré sans réponse.
+7. Fraîcheur : `now − 30 s ≤ timestamp + ttl` et `timestamp ≤ now + 30 s`, `ttl` = 60 s par
+   défaut, plafonné : 15 min (`Ring`, `StopRing`, `LocateNow`, `RequestStatus`, `CapturePhoto`),
+   24 h (`SetTrackingMode`, `LostMode`, `Lock`, `Wipe`, `Unpair`, `PairingConfirm`), 7 jours
+   (événements). Une commande périmée reçoit `CommandResult{REJECTED, "expired" | "clock_skew"}`.
+8. `Lock`, `Wipe`, `Unpair` sans contresignature `PK` valide :
+   `CommandResult{REJECTED, "privileged_signature_required"}`. Commande inconnue : `UNSUPPORTED`.
 
 ## 7. Commandes sensibles
 
-`Lock`, `Wipe`, `Unpair` DOIVENT porter `privileged_signature`. Côté PC, `PK` n'est déchiffrée
-qu'après ré-authentification (mot de passe maître ou TOTP) et effacée de la mémoire après usage.
-`Wipe` exige en plus, côté PC, deux confirmations, un délai annulable de 30 s et la saisie d'un
-mot-clé ; côté téléphone, un délai de grâce configurable (défaut 0) avant exécution.
+Côté PC : ré-saisie du mot de passe maître (Argon2id) pour déchiffrer `PK` à chaque commande ;
+pour `Wipe`, deux confirmations, un mot-clé et un **délai de 30 s imposé par le backend** (armement
+puis envoi entre 30 s et 5 min). Conséquence : un PC compromis mais verrouillé ne peut ni
+effacer, ni verrouiller, ni désappairer le téléphone.
 
-Conséquence : un PC compromis **mais verrouillé** (malware sans mot de passe maître) ne peut
-ni effacer, ni verrouiller, ni désappairer le téléphone.
+## 8. Transport — API du relay
 
-## 8. Transport
+TLS 1.3 uniquement, certificat auto-signé, client épinglé sur le SHA-256 du SPKI (aucune AC de
+confiance ; la signature de la poignée de main TLS reste vérifiée). Corps Protobuf.
 
-* **Relay HTTP API** (TLS 1.3, SPKI épinglé ; ou HTTP dans le tunnel WireGuard) :
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| `GET` | `/v1/health` | — | santé |
+| `POST` | `/v1/enroll` | preuve / jeton admin | enrôlement (§3.2) |
+| `POST` | `/v1/invites` | contrôleur | dépôt d'un `token_hash` (≤ 8 actifs) |
+| `PUT` | `/v1/mailbox/{recipient_hex}` | pair lié | dépôt d'`Envelope` (expéditeur = authentifié) |
+| `GET` | `/v1/mailbox[?wait=N]` | pair | ≤ 64 éléments ; attente longue ≤ 30 s (`MailboxBatch`) |
+| `POST` | `/v1/mailbox/ack` | pair | suppression (`MailboxAck`) |
+| `DELETE` | `/v1/peers/{id_hex}` | pair concerné | révocation |
 
-  | Méthode | Chemin | Auth | Rôle |
-  |---|---|---|---|
-  | `GET` | `/v1/health` | — | santé |
-  | `POST` | `/v1/invites` | contrôleur | dépôt d'un `token_hash` |
-  | `POST` | `/v1/enroll` | preuve d'invitation | enrôlement |
-  | `PUT` | `/v1/mailbox/{recipient_id}` | pair | dépôt d'`Envelope` |
-  | `GET` | `/v1/mailbox` | pair | récupération (≤ 64 enveloppes) |
-  | `POST` | `/v1/mailbox/ack` | pair | acquittement (suppression) |
-  | `GET` | `/v1/ws` | pair | notification « nouveau courrier » (WebSocket) |
-  | `DELETE` | `/v1/peers/{id}` | pair concerné | révocation |
-  | `GET` | `/v1/tiles/{source}/{z}/{x}/{y}` | pair | proxy de tuiles |
-
-* **Authentification des requêtes** : en-tête `Bastion-Auth` =
-  `device_id.timestamp_ms.nonce.signature` avec
-  `signature = Ed25519(IK, "bastion-req-v1" ‖ method ‖ path ‖ timestamp ‖ nonce ‖ BLAKE2b-256(body))`.
-  Le relay refuse un horodatage hors ±30 s et un nonce déjà vu.
-* **Contrôleur initial** : le script d'amorçage du relay produit un jeton d'administration à
-  usage unique pour enrôler le premier PC (rôle `controller`).
-* **Canal SMS de secours** (optionnel, désactivé par défaut) : seulement `Ring` et `Lock`,
-  format binaire compact signé (`type ‖ counter ‖ timestamp ‖ PK-sig`), encodé base64url ;
-  authentifié mais non chiffré (le contenu n'est pas secret). Détails au jalon 5.
+En-tête `Bastion-Auth: hex(device_id).timestamp_ms.hex(nonce16).base64url(sig)` avec
+`sig = Sign(IK, T("bastion-req-v1", méthode, chemin?requête, u64be(timestamp), nonce,
+BLAKE2b-256(corps)))`. Refus si horodatage hors ±30 s ou nonce déjà vu (cache 61 s, enregistré
+seulement après vérification de la signature). Débit : 30 req/s (rafale 60) par appareil,
+2 req/s (rafale 20) par IP pour l'enrôlement ; 2 attentes longues simultanées par appareil.
+Erreurs : `RelayError{code}` opaque. Aucune adresse IP n'est journalisée.
 
 ## 9. Limites et constantes
 
 | Constante | Valeur |
 |---|---|
-| Taille max enveloppe | 512 KiB |
-| Taille max champ `bytes` | 384 KiB |
+| Taille max enveloppe / corps de requête | 512 KiO / 513 KiO |
+| `sealed_hello` | ≤ 4 KiO |
 | TTL invitation | ≤ 300 s |
 | Dérive d'horloge tolérée | 30 s |
 | Fenêtre anti-rejeu | 1024 |
-| TTL boîte aux lettres relay | 7 jours (événements) |
-| Rotation `XK` | 7 jours |
-| Débit relay par pair | 30 req/s, rafale 60 |
+| TTL boîte aux lettres | 7 jours |
+| Quota par destinataire | 512 éléments, 32 MiO |
 
 ## 10. Versionnage
 
-* `package bastion.v1` ; un changement incompatible crée `bastion.v2`.
-* Les champs ne sont jamais renumérotés ; les champs retirés sont `reserved`.
-* `protocol_version` (entier) est incrémenté à chaque ajout de type de message ; un récepteur
-  ignore les `payload` inconnus en renvoyant `CommandResult{status=UNSUPPORTED}`.
+`package bastion.v1` ; un changement incompatible crée `bastion.v2`. Les champs ne sont jamais
+renumérotés ; les champs retirés sont `reserved`.

@@ -131,3 +131,50 @@ remplacé est marqué *Remplacé par ADR-xxxx*.
   contrôles désactivés et séparateurs (exemptés par WCAG 1.4.3) ; le générateur impose ≥ 3:1 pour lui
   et ≥ 4,5:1 pour toutes les autres couleurs de texte/état.
 * **Conséquences** : toute nouvelle couleur passe la même vérification en CI.
+
+## ADR-0016 — Cryptographie Rust pure, compatible libsodium (remplace en partie ADR-0005)
+
+* **Contexte** : le workspace interdit `unsafe_code` ; `libsodium-sys` imposerait une enveloppe
+  `unsafe` et une chaîne C sous Windows.
+* **Décision** : côté Rust, `ed25519-dalek` (vérification stricte), `x25519-dalek`,
+  `chacha20poly1305`, `blake2`, `argon2`, `crypto_box` (sealed box) — byte-compatibles avec
+  libsodium. Android garde libsodium (lazysodium).
+* **Conséquences** : l'équivalence est prouvée par `protocol/testvectors/v1.txt`, généré par Rust et
+  recalculé par Kotlin/libsodium (y compris une boîte scellée ouverte de part et d'autre).
+
+## ADR-0017 — Transcriptions préfixées par la longueur
+
+* **Décision** : toute entrée signée/hachée est `T(ctx, champs…)` avec `u32be(len)` avant chaque
+  champ (PROTOCOL.md §1.1), y compris l'AAD et la clé de session qui lie les deux `IK` et `XK`.
+* **Conséquences** : aucune ambiguïté de concaténation (champs optionnels vides compris).
+
+## ADR-0018 — Attente longue plutôt que WebSocket
+
+* **Décision** : `GET /v1/mailbox?wait=N` (≤ 30 s) remplace `/v1/ws`.
+* **Raisons** : même authentification par requête signée que le reste de l'API, aucun état de
+  connexion, traverse tous les proxys ; latence équivalente pour une console à quelques appareils.
+
+## ADR-0019 — Relay intégré au PC par défaut ; WireGuard reporté
+
+* **Décision** : l'application PC embarque le relay (topologie B) et l'annonce sur le réseau local
+  ; un relay distant reste configurable. Le tunnel WireGuard n'est pas livré en v0.1 : le canal
+  TLS 1.3 épinglé (ARCHITECTURE.md §3.4, cas 2) est utilisé partout.
+* **Conséquences** : installation immédiate sans serveur ; portée limitée au réseau du PC tant
+  qu'aucune redirection de port ou relay distant n'est configuré (LIMITATIONS.md).
+
+## ADR-0020 — Module `:core:agent` et état du téléphone
+
+* **Décision** : la logique protocolaire du téléphone (invitation, enrôlement, règles §6,
+  décodage des commandes) vit dans un module Kotlin/JVM pur `:core:agent`, testé sans émulateur
+  contre un contrôleur simulé. L'état (clés, compteurs, fenêtre anti-rejeu) est un message
+  Protobuf local chiffré AES-256-GCM par une clé Keystore (StrongBox si disponible), dans
+  `noBackupFilesDir`, plutôt qu'une base Room/SQLCipher.
+* **Raisons** : volume minime, écriture atomique unique, persistance avant effet triviale à garantir.
+
+## ADR-0021 — Coffre PC
+
+* **Décision** : fichier unique `vault.bin` (en-tête Argon2id authentifié en AAD, paramètres
+  inférieurs à `INTERACTIVE` refusés pour empêcher une rétrogradation), écrit atomiquement ;
+  `PK` scellée une seconde fois avec son propre sel. Le webview ne reçoit jamais de clé ; le délai
+  de 30 s de l'effacement est imposé par le backend.
+
