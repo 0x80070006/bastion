@@ -2,14 +2,20 @@
 //! Runtime configuration, read from environment variables only (no secrets on the command line).
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 /// Relay runtime configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    /// Address of the HTTP API listener.
+    /// Address of the HTTPS API listener.
     pub listen_addr: SocketAddr,
-    /// Whether access logs are emitted. Off by default: no IP addresses are logged.
+    /// Whether access logs are emitted. Off by default; they never contain IP addresses.
     pub access_log: bool,
+    /// Directory holding the database and the TLS key (created if missing).
+    pub data_dir: PathBuf,
+    /// Serve TLS 1.3 (default). Plain HTTP is only for tests and for a listener bound to a
+    /// WireGuard interface.
+    pub tls: bool,
 }
 
 /// Configuration errors.
@@ -18,14 +24,16 @@ pub enum ConfigError {
     /// `BASTION_RELAY_LISTEN` is not a valid socket address.
     #[error("BASTION_RELAY_LISTEN is not a valid socket address: {0}")]
     InvalidListenAddr(String),
-    /// `BASTION_RELAY_ACCESS_LOG` is not `true` or `false`.
-    #[error("BASTION_RELAY_ACCESS_LOG must be `true` or `false`")]
-    InvalidAccessLog,
+    /// A boolean variable is not `true` or `false`.
+    #[error("{0} must be `true` or `false`")]
+    InvalidBool(&'static str),
 }
 
 impl Config {
     /// Default API listener.
     pub const DEFAULT_LISTEN: &'static str = "127.0.0.1:8443";
+    /// Default data directory.
+    pub const DEFAULT_DATA_DIR: &'static str = "data";
 
     /// Builds the configuration from a variable lookup function (testable without touching
     /// the process environment).
@@ -37,14 +45,19 @@ impl Config {
         let listen_addr = listen
             .parse()
             .map_err(|_| ConfigError::InvalidListenAddr(listen.clone()))?;
-        let access_log = match lookup("BASTION_RELAY_ACCESS_LOG").as_deref() {
-            None | Some("false") => false,
-            Some("true") => true,
-            Some(_) => return Err(ConfigError::InvalidAccessLog),
+        let boolean = |name: &'static str, default: bool| match lookup(name).as_deref() {
+            None => Ok(default),
+            Some("true") => Ok(true),
+            Some("false") => Ok(false),
+            Some(_) => Err(ConfigError::InvalidBool(name)),
         };
         Ok(Self {
             listen_addr,
-            access_log,
+            access_log: boolean("BASTION_RELAY_ACCESS_LOG", false)?,
+            data_dir: lookup("BASTION_RELAY_DATA")
+                .unwrap_or_else(|| Self::DEFAULT_DATA_DIR.into())
+                .into(),
+            tls: boolean("BASTION_RELAY_TLS", true)?,
         })
     }
 
@@ -62,13 +75,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_are_private_and_quiet() {
+    fn defaults_are_private_quiet_and_encrypted() {
         let config = Config::from_lookup(|_| None);
         assert_eq!(
             config,
             Ok(Config {
                 listen_addr: Config::DEFAULT_LISTEN.parse().unwrap(),
                 access_log: false,
+                data_dir: Config::DEFAULT_DATA_DIR.into(),
+                tls: true,
             })
         );
     }
@@ -80,6 +95,11 @@ mod tests {
         assert_eq!(bad_addr, Err(ConfigError::InvalidListenAddr("nope".into())));
         let bad_log =
             Config::from_lookup(|k| (k == "BASTION_RELAY_ACCESS_LOG").then(|| "1".into()));
-        assert_eq!(bad_log, Err(ConfigError::InvalidAccessLog));
+        assert_eq!(
+            bad_log,
+            Err(ConfigError::InvalidBool("BASTION_RELAY_ACCESS_LOG"))
+        );
+        let bad_tls = Config::from_lookup(|k| (k == "BASTION_RELAY_TLS").then(|| "no".into()));
+        assert_eq!(bad_tls, Err(ConfigError::InvalidBool("BASTION_RELAY_TLS")));
     }
 }
