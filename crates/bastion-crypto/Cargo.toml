@@ -1,0 +1,28 @@
+[package]
+name = "bastion-crypto"
+version = "0.1.0"
+description = "Bastion protocol v1 cryptography (identities, pairing, sessions, envelopes)"
+license = "GPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bastion-proto.workspace = true
+prost.workspace = true
+thiserror.workspace = true
+ed25519-dalek.workspace = true
+x25519-dalek.workspace = true
+chacha20poly1305.workspace = true
+blake2.workspace = true
+argon2.workspace = true
+crypto_box.workspace = true
+rand_core.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+zeroize.workspace = true
+hex.workspace = true
+base64.workspace = true
+
+[lints]
+workspace = true

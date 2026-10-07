@@ -1,8 +1,10 @@
 package org.bastion.buildlogic
 
+import io.gitlab.arturbosch.detekt.Detekt
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.withType
 import org.jlleitschuh.gradle.ktlint.KtlintExtension
 
 /**
@@ -30,6 +32,10 @@ internal fun Project.configureQuality() {
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
         source.setFrom("src/main/kotlin", "src/test/kotlin", "src/androidTest/kotlin")
     }
+
+    // Analyse for the project bytecode level, not for the JVM running Gradle.
+    val jvmTarget = libs.version("jvmTarget")
+    tasks.withType<Detekt>().configureEach { this.jvmTarget = jvmTarget }
 
     // detekt 1.23.x is compiled against Kotlin 2.0.21 and fails if Gradle resolves a newer
     // Kotlin compiler onto its own classpath.

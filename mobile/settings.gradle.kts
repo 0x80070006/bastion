@@ -7,6 +7,11 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Provisions the JDK 21 toolchain when it is not installed locally (CI and fresh machines).
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -21,6 +26,7 @@ include(
     ":app",
     ":core:designsystem",
     ":core:domain",
+    ":core:agent",
     ":core:crypto",
     ":core:protocol",
     ":core:vpn",

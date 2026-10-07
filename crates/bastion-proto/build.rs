@@ -12,6 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "bastion/v1/commands.proto",
         "bastion/v1/events.proto",
         "bastion/v1/pairing.proto",
+        "bastion/v1/relay.proto",
     ];
 
     let protoc = protoc_bin_vendored::protoc_bin_path()?;

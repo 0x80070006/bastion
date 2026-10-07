@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Phone-local persisted state (never sent over the network). Stored encrypted with an
+// Android Keystore key; see docs/ARCHITECTURE.md §3.3.
+syntax = "proto3";
+
+package bastion.local.v1;
+
+option java_multiple_files = true;
+option java_package = "org.bastion.core.agent.state";
+
+message AgentState {
+  Pairing pairing = 1;
+  ProtectionSettings settings = 2;
+  repeated JournalEntry journal = 3;
+}
+
+message Pairing {
+  bytes identity_seed = 1;
+  bytes exchange_secret = 2;
+  uint32 exchange_epoch = 3;
+  string relay_url = 4;
+  bytes relay_pin = 5;
+  bytes controller_identity = 6;
+  bytes controller_exchange = 7;
+  uint32 controller_epoch = 8;
+  bytes controller_privileged = 9;
+  string controller_label = 10;
+  uint32 sas = 11;
+  bool local_confirmed = 12;
+  bool remote_confirmed = 13;
+  uint32 protocol_version = 14;
+  uint64 send_counter = 15;
+  bytes recv_window = 16;
+  repeated SeenId seen = 17;
+  int64 paired_at_ms = 18;
+  int64 last_contact_ms = 19;
+  bool enrolled = 20;
+}
+
+message SeenId {
+  bytes id = 1;
+  int64 expires_ms = 2;
+}
+
+message ProtectionSettings {
+  // bastion.v1.TrackingMode value.
+  int32 tracking_mode = 1;
+  bool lost_mode = 2;
+  string contact_message = 3;
+  string contact_phone = 4;
+  string contact_email = 5;
+  bool protection_enabled = 6;
+}
+
+message JournalEntry {
+  int64 time_ms = 1;
+  string kind = 2;
+  string detail = 3;
+}

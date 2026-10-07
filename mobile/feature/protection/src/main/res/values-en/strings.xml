@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="unpaired_title">Not paired</string>
+    <string name="unpaired_hint">Pair this phone with your computer to locate, ring or lock it remotely.</string>
+    <string name="unpaired_action">Pair</string>
+    <string name="status_protected">Protected</string>
+    <string name="status_degraded">Protection weakened</string>
+    <string name="status_waiting">Waiting for the computer</string>
+    <string name="status_controller">Controlled by “%1$s”</string>
+    <string name="status_last_contact">Last contact with the relay: %1$s</string>
+    <string name="status_never_contacted">No contact with the relay yet</string>
+    <string name="status_lost_mode">Lost mode on</string>
+    <string name="health_title">Protection health</string>
+    <string name="health_ok">OK</string>
+    <string name="health_fix">Fix</string>
+    <string name="health_screen_lock">Screen lock</string>
+    <string name="health_screen_lock_problem">No code: anyone can use this phone</string>
+    <string name="health_notifications">Notifications</string>
+    <string name="health_notifications_problem">Denied: protection keeps running but is invisible</string>
+    <string name="health_location">Location</string>
+    <string name="health_location_problem">Denied: the phone cannot be located</string>
+    <string name="health_background_location">Background location</string>
+    <string name="health_background_location_problem">Choose “Allow all the time” to locate after a restart</string>
+    <string name="health_device_admin">Device administrator</string>
+    <string name="health_device_admin_problem">Inactive: remote lock and wipe unavailable</string>
+    <string name="health_battery">Battery optimisation</string>
+    <string name="health_battery_problem">On: Android may stop the protection</string>
+    <string name="health_relay">Relay</string>
+    <string name="health_relay_problem">Unreachable for now (retrying automatically)</string>
+    <string name="action_unpair">Unpair this phone</string>
+    <string name="lost_title">Lost phone</string>
+    <string name="lost_default_message">This phone was lost. Please contact its owner.</string>
+    <string name="lost_owner">I am the owner</string>
+</resources>

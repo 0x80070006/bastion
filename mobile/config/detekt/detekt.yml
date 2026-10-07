@@ -10,6 +10,8 @@ naming:
 
 style:
   ReturnCount:
+    # Android code checks permissions and state in guard clauses before acting.
+    max: 4
     excludeGuardClauses: true
   MagicNumber:
     ignorePropertyDeclaration: true
@@ -22,8 +24,12 @@ style:
 
 complexity:
   LongParameterList:
+    # Protocol derivations take every key they bind; grouping them would hide that.
+    functionThreshold: 8
     ignoreAnnotated: ['Composable']
   TooManyFunctions:
+    thresholdInInterfaces: 15
+    thresholdInClasses: 15
     ignoreAnnotatedFunctions: ['Preview']
 
 exceptions:

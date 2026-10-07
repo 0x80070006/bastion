@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal policy set: lock, wipe, failed-unlock detection. No password policies. -->
+<device-admin>
+    <uses-policies>
+        <force-lock />
+        <wipe-data />
+        <watch-login />
+    </uses-policies>
+</device-admin>

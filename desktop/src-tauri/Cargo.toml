@@ -17,10 +17,27 @@ serde_json.workspace = true
 
 [dependencies]
 bastion-proto.workspace = true
-tauri.workspace = true
+bastion-crypto.workspace = true
+bastion-relay.workspace = true
+prost.workspace = true
+tauri = { workspace = true, features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2.4.5"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rustls.workspace = true
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-webpki-roots", "http2"] }
+x509-parser = "0.18.1"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+zeroize.workspace = true
+hex.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true
