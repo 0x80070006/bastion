@@ -6,7 +6,7 @@ ksp = "2.3.12"
 compileSdk = "37"
 targetSdk = "37"
 minSdk = "29"
-jvmTarget = "17"
+jvmTarget = "21"
 
 androidx-core = "1.19.1"
 androidx-activity = "1.13.0"
