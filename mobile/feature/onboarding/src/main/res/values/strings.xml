@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pairing_title">Appairer avec votre PC</string>
+    <string name="pairing_hint">Sur le PC, ouvrez Téléphones › Ajouter un téléphone, puis scannez le code affiché.</string>
+    <string name="pairing_allow_camera">Autoriser la caméra</string>
+    <string name="pairing_paste_hint">Scan impossible ? Collez le lien « bastion://pair/… » affiché sur le PC.</string>
+    <string name="pairing_paste_label">Lien d\'appairage</string>
+    <string name="pairing_use_link">Utiliser le lien</string>
+    <string name="pairing_back">Retour</string>
+    <string name="sas_title">Vérifiez le code</string>
+    <string name="sas_body">Le PC « %1$s » doit afficher exactement ce code. S\'il est différent, refusez : quelqu\'un tente de s\'interposer.</string>
+    <string name="sas_match">Les codes sont identiques</string>
+    <string name="sas_mismatch">Les codes diffèrent</string>
+    <string name="sas_awaiting">Confirmé ici. Confirmez maintenant sur le PC.</string>
+    <string name="sas_cancel">Annuler l\'appairage</string>
+</resources>

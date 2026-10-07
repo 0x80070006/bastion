@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pairing_title">Pair with your computer</string>
+    <string name="pairing_hint">On the computer, open Phones › Add a phone, then scan the code shown.</string>
+    <string name="pairing_allow_camera">Allow the camera</string>
+    <string name="pairing_paste_hint">Cannot scan? Paste the “bastion://pair/…” link shown on the computer.</string>
+    <string name="pairing_paste_label">Pairing link</string>
+    <string name="pairing_use_link">Use the link</string>
+    <string name="pairing_back">Back</string>
+    <string name="sas_title">Check the code</string>
+    <string name="sas_body">The computer “%1$s” must show exactly this code. If it differs, refuse: someone is trying to intercept.</string>
+    <string name="sas_match">The codes match</string>
+    <string name="sas_mismatch">The codes differ</string>
+    <string name="sas_awaiting">Confirmed here. Now confirm on the computer.</string>
+    <string name="sas_cancel">Cancel pairing</string>
+</resources>

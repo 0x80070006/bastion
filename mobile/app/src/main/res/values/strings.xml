@@ -1,7 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="home_status_unpaired">Non appairé</string>
-    <string name="home_status_unpaired_hint">Appairez ce téléphone avec votre PC pour pouvoir le localiser, le faire sonner ou le verrouiller à distance.</string>
-    <string name="home_action_pair">Appairer</string>
-    <string name="home_action_pair_unavailable">Disponible dans une prochaine version.</string>
+    <string name="app_protection_title">Protection antivol</string>
+    <string name="notif_protection_active">Ce téléphone peut être localisé et verrouillé depuis votre PC.</string>
+    <string name="notif_protection_pending">En attente de la confirmation de l\'appairage.</string>
+    <string name="notif_alarm_title">Sonnerie déclenchée à distance</string>
+    <string name="notif_alarm_text">Ouvrez l\'application pour l\'arrêter.</string>
+    <string name="notif_lost_title">Téléphone perdu</string>
+    <string name="notif_lost_text">Touchez pour afficher les coordonnées du propriétaire.</string>
+    <string name="channel_protection">Protection</string>
+    <string name="channel_alarm">Sonnerie à distance</string>
+    <string name="channel_lost">Mode Perdu</string>
+    <string name="lock_title">Déverrouiller l\'application</string>
+    <string name="lock_unlock">Déverrouiller</string>
+    <string name="admin_explanation">Permet de verrouiller ou d\'effacer ce téléphone à distance et de détecter les codes erronés. Bastion ne peut rien faire d\'autre avec ce droit.</string>
+    <string name="admin_disable_warning">Désactiver cet administrateur affaiblit la protection antivol. Votre PC en sera averti.</string>
+    <string name="pair_error_expired">Ce code a expiré. Générez-en un nouveau sur le PC.</string>
+    <string name="pair_error_insecure">Ce code désigne un relay non chiffré : refusé.</string>
+    <string name="pair_error_signature">Ce code est invalide (signature incorrecte).</string>
+    <string name="pair_error_malformed">Ce n\'est pas un code d\'appairage Bastion.</string>
+    <string name="pair_error_pin">Le relay ne présente pas la clé attendue : connexion refusée.</string>
+    <string name="pair_error_unreachable">Relay injoignable. Le téléphone et le PC sont-ils sur le même réseau ?</string>
+    <string name="pair_error_refused">Le relay a refusé l\'appairage (code déjà utilisé ou expiré).</string>
 </resources>

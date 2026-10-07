@@ -1,4 +1,5 @@
 import groovy.json.JsonSlurper
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.bastion.android.application)
@@ -11,8 +12,32 @@ plugins {
 @Suppress("UNCHECKED_CAST")
 val branding = JsonSlurper().parse(rootProject.file("../branding/product.json")) as Map<String, String>
 
+// Release signing material lives outside the repository (default: ~/.bastion-signing).
+// Without it, release builds are produced unsigned.
+val signingFile = providers.environmentVariable("BASTION_SIGNING_PROPERTIES")
+    .orElse(providers.systemProperty("user.home").map { "$it/.bastion-signing/signing.properties" })
+    .map { File(it) }
+    .get()
+val signing = Properties().apply {
+    if (signingFile.isFile) signingFile.inputStream().use { load(it) }
+}
+
 android {
     namespace = "org.bastion.mobile"
+
+    if (!signing.isEmpty) {
+        signingConfigs {
+            create("release") {
+                storeFile = File(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = branding.getValue("applicationId")
@@ -31,6 +56,9 @@ android {
         debug {
             applicationIdSuffix = ".debug"
         }
+        release {
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 }
 
@@ -45,9 +73,18 @@ dependencies {
     implementation(projects.feature.protection)
     implementation(projects.feature.remote)
 
+    implementation(projects.core.agent)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.biometric)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.okhttp)
+    // libsodium (ADR-0005): JNA must be the Android AAR (native dispatcher), not the JVM jar.
+    implementation(libs.lazysodium.android) { exclude(group = "net.java.dev.jna") }
+    implementation(libs.jna) { artifact { type = "aar" } }
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 

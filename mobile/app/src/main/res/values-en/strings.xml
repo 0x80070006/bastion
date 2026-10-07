@@ -1,7 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="home_status_unpaired">Not paired</string>
-    <string name="home_status_unpaired_hint">Pair this phone with your computer to locate, ring or lock it remotely.</string>
-    <string name="home_action_pair">Pair</string>
-    <string name="home_action_pair_unavailable">Available in an upcoming version.</string>
+    <string name="app_protection_title">Anti-theft protection</string>
+    <string name="notif_protection_active">This phone can be located and locked from your computer.</string>
+    <string name="notif_protection_pending">Waiting for the pairing confirmation.</string>
+    <string name="notif_alarm_title">Remote ring triggered</string>
+    <string name="notif_alarm_text">Open the app to stop it.</string>
+    <string name="notif_lost_title">Lost phone</string>
+    <string name="notif_lost_text">Tap to show the owner\'s contact details.</string>
+    <string name="channel_protection">Protection</string>
+    <string name="channel_alarm">Remote ring</string>
+    <string name="channel_lost">Lost mode</string>
+    <string name="lock_title">Unlock the app</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="admin_explanation">Lets you lock or wipe this phone remotely and detects wrong unlock codes. Bastion cannot do anything else with this right.</string>
+    <string name="admin_disable_warning">Disabling this administrator weakens the anti-theft protection. Your computer will be notified.</string>
+    <string name="pair_error_expired">This code expired. Generate a new one on the computer.</string>
+    <string name="pair_error_insecure">This code points to an unencrypted relay: refused.</string>
+    <string name="pair_error_signature">This code is invalid (bad signature).</string>
+    <string name="pair_error_malformed">This is not a Bastion pairing code.</string>
+    <string name="pair_error_pin">The relay does not present the expected key: connection refused.</string>
+    <string name="pair_error_unreachable">Relay unreachable. Are the phone and the computer on the same network?</string>
+    <string name="pair_error_refused">The relay refused the pairing (code already used or expired).</string>
 </resources>

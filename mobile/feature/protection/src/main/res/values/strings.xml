@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="unpaired_title">Non appairé</string>
+    <string name="unpaired_hint">Appairez ce téléphone avec votre PC pour pouvoir le localiser, le faire sonner ou le verrouiller à distance.</string>
+    <string name="unpaired_action">Appairer</string>
+    <string name="status_protected">Protégé</string>
+    <string name="status_degraded">Protection affaiblie</string>
+    <string name="status_waiting">En attente du PC</string>
+    <string name="status_controller">Contrôlé par « %1$s »</string>
+    <string name="status_last_contact">Dernier contact avec le relay : %1$s</string>
+    <string name="status_never_contacted">Pas encore de contact avec le relay</string>
+    <string name="status_lost_mode">Mode Perdu actif</string>
+    <string name="health_title">Santé de la protection</string>
+    <string name="health_ok">OK</string>
+    <string name="health_fix">Corriger</string>
+    <string name="health_screen_lock">Verrouillage de l\'écran</string>
+    <string name="health_screen_lock_problem">Aucun code : n\'importe qui peut utiliser le téléphone</string>
+    <string name="health_notifications">Notifications</string>
+    <string name="health_notifications_problem">Refusées : la protection reste active mais invisible</string>
+    <string name="health_location">Localisation</string>
+    <string name="health_location_problem">Refusée : le téléphone ne pourra pas être localisé</string>
+    <string name="health_background_location">Localisation en arrière-plan</string>
+    <string name="health_background_location_problem">Choisir « Toujours autoriser » pour localiser après un redémarrage</string>
+    <string name="health_device_admin">Administrateur de l\'appareil</string>
+    <string name="health_device_admin_problem">Inactif : verrouillage et effacement à distance indisponibles</string>
+    <string name="health_battery">Optimisation de la batterie</string>
+    <string name="health_battery_problem">Active : Android peut couper la protection</string>
+    <string name="health_relay">Relay</string>
+    <string name="health_relay_problem">Injoignable pour l\'instant (nouvel essai automatique)</string>
+    <string name="action_unpair">Désappairer ce téléphone</string>
+    <string name="lost_title">Téléphone perdu</string>
+    <string name="lost_default_message">Ce téléphone a été perdu. Merci de contacter son propriétaire.</string>
+    <string name="lost_owner">Je suis le propriétaire</string>
+</resources>
