@@ -222,6 +222,27 @@ pub struct DeviceRecord {
     pub status: Option<StatusView>,
     /// Recent commands (bounded).
     pub commands: VecDeque<SentCommand>,
+    /// Anti-intrusion / on-demand photos (metadata; the JPEG lives in the media store).
+    #[serde(default)]
+    pub photos: VecDeque<PhotoMeta>,
+}
+
+/// Metadata of a stored photo. The JPEG itself is kept as a separate encrypted file named
+/// by `id`; this keeps large images out of the frequently re-encrypted vault.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoMeta {
+    /// 16-byte identifier, also the media file name.
+    #[serde(with = "b64")]
+    pub id: Vec<u8>,
+    /// `front`, `back` or `unspecified`.
+    pub camera: String,
+    /// `onDemand` or `failedUnlock`.
+    pub trigger: String,
+    /// When the phone captured it.
+    pub captured_ms: i64,
+    /// Whether a location accompanied the photo.
+    pub has_location: bool,
 }
 
 /// Security journal entry.
@@ -275,6 +296,8 @@ pub const MAX_JOURNAL: usize = 1000;
 pub const MAX_LOCATIONS: usize = 2000;
 /// Maximum remembered commands per device.
 pub const MAX_COMMANDS: usize = 100;
+/// Maximum stored photos per device (older ones and their files are purged).
+pub const MAX_PHOTOS: usize = 200;
 
 impl VaultData {
     /// Appends a journal entry, dropping the oldest beyond [`MAX_JOURNAL`].

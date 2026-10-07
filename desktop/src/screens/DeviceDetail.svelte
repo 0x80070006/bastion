@@ -2,6 +2,7 @@
   import Button from "../lib/components/Button.svelte";
   import MapView from "../lib/components/MapView.svelte";
   import ActionDialogs, { type DialogKind } from "./ActionDialogs.svelte";
+  import CameraPanel from "./CameraPanel.svelte";
   import { api, errorCode, type CommandRequest, type DeviceDetail } from "../lib/api";
   import { dateTime, relativeTime } from "../lib/format";
   import { locale, t, type MessageKey } from "../lib/i18n";
@@ -10,9 +11,10 @@
     detail: DeviceDetail;
     onlineMap: boolean;
     now: number;
+    revision: number;
   }
 
-  let { detail, onlineMap, now }: Props = $props();
+  let { detail, onlineMap, now, revision }: Props = $props();
   let dialog: DialogKind | undefined = $state();
   let feedback = $state("");
   let feedbackError = $state(false);
@@ -158,6 +160,8 @@
         >
         <Button variant="ghost" onclick={() => (dialog = "forget")}>{t("action.forget")}</Button>
       </div>
+
+      <CameraPanel deviceId={device.id} {active} {revision} />
 
       {#if detail.commands.length > 0}
         <h2>{t("device.commands")}</h2>

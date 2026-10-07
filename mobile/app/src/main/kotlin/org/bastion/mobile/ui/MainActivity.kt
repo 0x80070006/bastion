@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -57,6 +58,7 @@ class MainActivity : FragmentActivity() {
     private var unlocked by mutableStateOf(false)
     private var scanning by mutableStateOf(false)
     private var cameraGranted by mutableStateOf(false)
+    private var pendingLink by mutableStateOf<String?>(null)
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         cameraGranted = granted(Manifest.permission.CAMERA)
@@ -73,8 +75,22 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         enableEdgeToEdge()
         cameraGranted = granted(Manifest.permission.CAMERA)
+        pendingLink = pairingLink(intent)
         setContent { BastionTheme { Root() } }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pairingLink(intent)?.let { pendingLink = it }
+    }
+
+    // A bastion://pair/v1#… deep link, processed only once the app is unlocked and confirmed
+    // with the SAS, exactly like a scanned QR code.
+    private fun pairingLink(intent: Intent?): String? =
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.takeIf {
+            it.startsWith("bastion://pair/")
+        }
 
     override fun onStart() {
         super.onStart()
@@ -163,6 +179,15 @@ class MainActivity : FragmentActivity() {
         }
         val home by viewModel.home.collectAsStateWithLifecycle()
         val pairing by viewModel.pairing.collectAsStateWithLifecycle()
+        // A pairing deep link received while unpaired: open the pairing flow and use it.
+        LaunchedEffect(pendingLink, home) {
+            val link = pendingLink
+            if (link != null && home == HomeState.Unpaired) {
+                pendingLink = null
+                scanning = true
+                viewModel.pair(link) { scanning = false }
+            }
+        }
         when (val state = home) {
             HomeState.Unpaired -> if (scanning) {
                 PairingScreen(

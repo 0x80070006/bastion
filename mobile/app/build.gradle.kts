@@ -82,6 +82,9 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
     // libsodium (ADR-0005): JNA must be the Android AAR (native dispatcher), not the JVM jar.
     implementation(libs.lazysodium.android) { exclude(group = "net.java.dev.jna") }
     implementation(libs.jna) { artifact { type = "aar" } }

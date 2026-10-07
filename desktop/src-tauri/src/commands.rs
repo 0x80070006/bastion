@@ -320,6 +320,35 @@ pub enum CommandRequest {
     },
     /// Status report.
     Status,
+    /// Take one photo (front/back/unspecified).
+    #[serde(rename_all = "camelCase")]
+    CapturePhoto {
+        /// `front`, `back` or `unspecified`.
+        camera: String,
+    },
+    /// Start or stop a near-live camera stream.
+    #[serde(rename_all = "camelCase")]
+    Stream {
+        /// Whether to start (true) or stop (false) the stream.
+        enabled: bool,
+        /// `front` or `back`.
+        camera: String,
+        /// Target frames per second.
+        fps: u32,
+        /// Longest edge of each frame, in pixels.
+        edge_px: u32,
+        /// Hard stop after this many seconds.
+        duration_seconds: u32,
+    },
+}
+
+fn camera_value(name: &str) -> i32 {
+    use bastion_proto::v1::capture_photo::Camera;
+    match name {
+        "front" => Camera::Front as i32,
+        "back" => Camera::Back as i32,
+        _ => Camera::Unspecified as i32,
+    }
 }
 
 fn build_command(request: &CommandRequest) -> AppResult<Command> {
@@ -356,6 +385,24 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
             contact: c.as_ref().map(contact).transpose()?,
         }),
         CommandRequest::Status => command::Kind::RequestStatus(RequestStatus {}),
+        CommandRequest::CapturePhoto { camera } => {
+            command::Kind::CapturePhoto(bastion_proto::v1::CapturePhoto {
+                camera: camera_value(camera),
+            })
+        }
+        CommandRequest::Stream {
+            enabled,
+            camera,
+            fps,
+            edge_px,
+            duration_seconds,
+        } => command::Kind::StreamControl(bastion_proto::v1::StreamControl {
+            enabled: *enabled,
+            camera: camera_value(camera),
+            max_fps: (*fps).clamp(1, 10),
+            max_edge_px: (*edge_px).clamp(240, 1280),
+            max_duration_seconds: (*duration_seconds).clamp(1, 300),
+        }),
     };
     Ok(Command { kind: Some(kind) })
 }
@@ -370,6 +417,56 @@ pub async fn send_command(core: Core<'_>, id: String, request: CommandRequest) -
     }
     core.mutate(|s| Ok(((), vec![s.command(&device_id, command, None, now_ms())?])))
         .await
+}
+
+/// A stored photo, newest first in [`photos`].
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoView {
+    id: String,
+    camera: String,
+    trigger: String,
+    captured_ms: i64,
+    has_location: bool,
+}
+
+/// Metadata of a device's stored photos, newest first.
+#[tauri::command]
+pub async fn photos(core: Core<'_>, id: String) -> AppResult<Vec<PhotoView>> {
+    let device_id = parse_device_id(&id)?;
+    core.read(|s| {
+        let d = s
+            .data
+            .devices
+            .iter()
+            .find(|d| d.device_id == device_id)
+            .ok_or(AppError::UnknownDevice)?;
+        Ok(d.photos
+            .iter()
+            .rev()
+            .map(|p| PhotoView {
+                id: STANDARD.encode(&p.id),
+                camera: p.camera.clone(),
+                trigger: p.trigger.clone(),
+                captured_ms: p.captured_ms,
+                has_location: p.has_location,
+            })
+            .collect())
+    })
+    .await?
+}
+
+/// Returns a stored photo as a `data:image/jpeg;base64,…` URL.
+#[tauri::command]
+pub async fn photo(core: Core<'_>, photo_id: String) -> AppResult<String> {
+    let id = STANDARD
+        .decode(&photo_id)
+        .map_err(|_| AppError::InvalidInput)?;
+    if id.len() != 16 {
+        return Err(AppError::InvalidInput);
+    }
+    let jpeg = core.photo_bytes(&id).await?;
+    Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(&jpeg)))
 }
 
 /// Sensitive commands (re-authentication required).

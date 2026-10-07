@@ -69,7 +69,17 @@ public sealed interface AgentCommand {
 
     public class Status(override val messageId: ByteArray) : AgentCommand
 
-    public class CapturePhoto(override val messageId: ByteArray) : AgentCommand
+    public class CapturePhoto(override val messageId: ByteArray, public val camera: Int) : AgentCommand
+
+    /** Start or stop a near-live camera stream. Parameters are clamped to safe ranges. */
+    public class Stream(
+        override val messageId: ByteArray,
+        public val enabled: Boolean,
+        public val camera: Int,
+        public val fps: Int,
+        public val edgePx: Int,
+        public val durationSeconds: Int,
+    ) : AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -433,6 +443,12 @@ public class PhoneAgent(private val sodium: Sodium) {
         private const val MAX_LABEL = 64
         private const val MAX_RING_SECONDS = 600
         private const val U32_MASK = 0xffffffffL
+        private const val MIN_FPS = 1
+        private const val MAX_FPS = 10
+        private const val MIN_EDGE_PX = 240
+        private const val MAX_EDGE_PX = 1280
+        private const val DEFAULT_STREAM_SECONDS = 60
+        private const val MAX_STREAM_SECONDS = 300
 
         /** TTL caps per payload type (PROTOCOL.md §6.8). */
         internal fun effectiveTtlSeconds(body: MessageBody): Long {
@@ -462,6 +478,7 @@ public class PhoneAgent(private val sodium: Sodium) {
         private fun contact(card: org.bastion.protocol.v1.ContactCard): ContactCard? =
             ContactCard.create(card.message, card.phone, card.email).getOrNull()
 
+        @Suppress("CyclomaticComplexMethod")
         internal fun decode(id: ByteArray, command: Command): AgentCommand? = when (command.kindCase) {
             Command.KindCase.RING -> AgentCommand.Ring(
                 id,
@@ -493,7 +510,20 @@ public class PhoneAgent(private val sodium: Sodium) {
 
             Command.KindCase.REQUEST_STATUS -> AgentCommand.Status(id)
 
-            Command.KindCase.CAPTURE_PHOTO -> AgentCommand.CapturePhoto(id)
+            Command.KindCase.CAPTURE_PHOTO -> AgentCommand.CapturePhoto(id, command.capturePhoto.cameraValue)
+
+            Command.KindCase.STREAM_CONTROL -> AgentCommand.Stream(
+                id,
+                command.streamControl.enabled,
+                command.streamControl.cameraValue,
+                command.streamControl.maxFps.coerceIn(MIN_FPS, MAX_FPS),
+                command.streamControl.maxEdgePx.coerceIn(MIN_EDGE_PX, MAX_EDGE_PX),
+                if (command.streamControl.maxDurationSeconds == 0) {
+                    DEFAULT_STREAM_SECONDS
+                } else {
+                    command.streamControl.maxDurationSeconds.coerceIn(1, MAX_STREAM_SECONDS)
+                },
+            )
 
             else -> null
         }

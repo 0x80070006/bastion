@@ -37,6 +37,9 @@ class DeviceState(private val context: Context) {
     fun hasNotifications(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         granted(Manifest.permission.POST_NOTIFICATIONS)
 
+    fun hasCamera(): Boolean = granted(Manifest.permission.CAMERA) &&
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+
     fun isAdminActive(): Boolean =
         context.getSystemService<DevicePolicyManager>()?.isAdminActive(adminComponent) == true
 

@@ -46,6 +46,10 @@ class BastionDeviceAdmin : DeviceAdminReceiver() {
                 .setType(Alert.Type.TYPE_FAILED_UNLOCK)
                 .putDetail("attempts", attempts.toString()),
         )
+        // After enough failures, have the foreground service take a front-camera intrusion photo.
+        if (attempts >= ProtectionService.INTRUSION_ATTEMPTS) {
+            ProtectionService.start(context, ProtectionService.ACTION_INTRUSION_PHOTO)
+        }
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {

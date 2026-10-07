@@ -16,6 +16,7 @@ message Event {
     Alert alert = 3;
     PhotoReport photo = 4;
     LastChanceBeacon last_chance = 5;
+    MediaFrame media_frame = 6;
   }
 }
 
@@ -114,6 +115,30 @@ message PhotoReport {
   bytes jpeg = 1;
   int64 captured_at_ms = 2;
   optional Location location = 3;
+  CapturePhoto.Camera camera = 4;
+  enum Trigger {
+    TRIGGER_UNSPECIFIED = 0;
+    // Owner requested the photo from the controller.
+    TRIGGER_ON_DEMAND = 1;
+    // Taken automatically after repeated failed unlocks.
+    TRIGGER_FAILED_UNLOCK = 2;
+  }
+  Trigger trigger = 5;
+  // message_id of the CapturePhoto command this answers, if any.
+  bytes command_message_id = 6;
+}
+
+// One frame of a near-live camera stream (StreamControl). Frames are ordinary end-to-end
+// events; the controller drops out-of-order or stale frames by sequence and timestamp.
+message MediaFrame {
+  // Strictly increasing within one stream session.
+  uint64 sequence = 1;
+  int64 captured_at_ms = 2;
+  CapturePhoto.Camera camera = 3;
+  // JPEG, max 384 KiB (enforced before encryption).
+  bytes jpeg = 4;
+  uint32 width = 5;
+  uint32 height = 6;
 }
 
 message LastChanceBeacon {
