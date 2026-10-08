@@ -23,4 +23,6 @@
     <string name="pair_error_pin">The relay does not present the expected key: connection refused.</string>
     <string name="pair_error_unreachable">Relay unreachable. Are the phone and the computer on the same network?</string>
     <string name="pair_error_refused">The relay refused the pairing (code already used or expired).</string>
+    <string name="remote_input_service_label">Bastion remote control</string>
+    <string name="remote_input_service_description">Lets the paired owner see the screen and drive the phone remotely (tap, swipe, type). Used only through the end-to-end encrypted channel; the lock screen is never bypassed.</string>
 </resources>

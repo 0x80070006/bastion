@@ -348,6 +348,20 @@ pub enum CommandRequest {
         /// Hard stop after this many seconds.
         duration_seconds: u32,
     },
+    /// Start or stop a near-live screen mirror.
+    #[serde(rename_all = "camelCase")]
+    Screen {
+        /// Whether to start (true) or stop (false) the screen mirror.
+        enabled: bool,
+        /// Target frames per second.
+        fps: u32,
+        /// Longest edge of each frame, in pixels.
+        edge_px: u32,
+        /// Hard stop after this many seconds.
+        duration_seconds: u32,
+        /// Keep the display awake while mirroring.
+        keep_awake: bool,
+    },
 }
 
 fn camera_value(name: &str) -> i32 {
@@ -418,6 +432,19 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
             enabled: *enabled,
             max_duration_seconds: (*duration_seconds).clamp(1, 300),
         }),
+        CommandRequest::Screen {
+            enabled,
+            fps,
+            edge_px,
+            duration_seconds,
+            keep_awake,
+        } => command::Kind::ScreenControl(bastion_proto::v1::ScreenControl {
+            enabled: *enabled,
+            max_fps: (*fps).clamp(1, 15),
+            max_edge_px: (*edge_px).clamp(240, 1600),
+            max_duration_seconds: (*duration_seconds).clamp(1, 900),
+            keep_awake: *keep_awake,
+        }),
     };
     Ok(Command { kind: Some(kind) })
 }
@@ -431,6 +458,122 @@ pub async fn send_command(core: Core<'_>, id: String, request: CommandRequest) -
         return Err(AppError::InvalidInput);
     }
     core.mutate(|s| Ok(((), vec![s.command(&device_id, command, None, now_ms())?])))
+        .await
+}
+
+/// One remote-input action injected into the phone. Coordinates are normalised to 0..1 of the
+/// phone's current display; the phone maps them against the live display size.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RemoteInputRequest {
+    /// A tap (or long press) at a normalised point.
+    #[serde(rename_all = "camelCase")]
+    Tap {
+        /// Normalised x (0..1).
+        x: f32,
+        /// Normalised y (0..1).
+        y: f32,
+        /// Long press instead of a short tap.
+        long_press: bool,
+    },
+    /// A swipe between two normalised points.
+    #[serde(rename_all = "camelCase")]
+    Swipe {
+        /// Start x (0..1).
+        x1: f32,
+        /// Start y (0..1).
+        y1: f32,
+        /// End x (0..1).
+        x2: f32,
+        /// End y (0..1).
+        y2: f32,
+        /// Gesture duration in milliseconds.
+        duration_ms: u32,
+    },
+    /// Insert text into the focused field.
+    #[serde(rename_all = "camelCase")]
+    Text {
+        /// UTF-8 text to insert.
+        text: String,
+        /// Press the editor action / Enter afterwards.
+        submit: bool,
+    },
+    /// A global navigation action (back, home, …).
+    Global {
+        /// One of `back`, `home`, `recents`, `notifications`, `quickSettings`, `wake`, `lock`.
+        action: String,
+    },
+}
+
+fn clamp01(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+fn global_action_value(name: &str) -> AppResult<i32> {
+    use bastion_proto::v1::GlobalAction;
+    let action = match name {
+        "back" => GlobalAction::Back,
+        "home" => GlobalAction::Home,
+        "recents" => GlobalAction::Recents,
+        "notifications" => GlobalAction::Notifications,
+        "quickSettings" => GlobalAction::QuickSettings,
+        "wake" => GlobalAction::Wake,
+        "lock" => GlobalAction::Lock,
+        _ => return Err(AppError::InvalidInput),
+    };
+    Ok(action as i32)
+}
+
+fn build_input(request: &RemoteInputRequest) -> AppResult<Command> {
+    use bastion_proto::v1::remote_input::Action;
+    use bastion_proto::v1::{RemoteInput, Swipe, Tap, TextInput};
+    let action = match request {
+        RemoteInputRequest::Tap { x, y, long_press } => Action::Tap(Tap {
+            x: clamp01(*x),
+            y: clamp01(*y),
+            long_press: *long_press,
+        }),
+        RemoteInputRequest::Swipe {
+            x1,
+            y1,
+            x2,
+            y2,
+            duration_ms,
+        } => Action::Swipe(Swipe {
+            x1: clamp01(*x1),
+            y1: clamp01(*y1),
+            x2: clamp01(*x2),
+            y2: clamp01(*y2),
+            duration_ms: (*duration_ms).clamp(20, 3000),
+        }),
+        RemoteInputRequest::Text { text, submit } => {
+            if text.len() > 2048 || has_control(text) {
+                return Err(AppError::InvalidInput);
+            }
+            Action::Text(TextInput {
+                text: text.clone(),
+                submit: *submit,
+            })
+        }
+        RemoteInputRequest::Global { action } => Action::Global(global_action_value(action)?),
+    };
+    Ok(Command {
+        kind: Some(command::Kind::RemoteInput(RemoteInput {
+            action: Some(action),
+        })),
+    })
+}
+
+/// Sends a remote-input action (fire-and-forget; not recorded in the command history).
+#[tauri::command]
+pub async fn remote_input(core: Core<'_>, id: String, input: RemoteInputRequest) -> AppResult<()> {
+    let device_id = parse_device_id(&id)?;
+    let command = build_input(&input)?;
+    core.mutate(|s| Ok(((), vec![s.input(&device_id, command, now_ms())?])))
         .await
 }
 
@@ -643,8 +786,20 @@ pub async fn send_sensitive(
 pub async fn forget_device(core: Core<'_>, id: String, password: String) -> AppResult<()> {
     let device_id = parse_device_id(&id)?;
     drop(core.unseal_privileged(password).await?);
-    core.mutate(|s| Ok(((), vec![s.forget(&device_id, now_ms())?])))
+    match core
+        .mutate(|s| Ok(((), vec![s.forget(&device_id, now_ms())?])))
         .await
+    {
+        // `mutate` persists the local removal before attempting the relay revoke, so the
+        // device is already gone once we get here. Forgetting exists precisely for phones
+        // that can no longer be reached, so a relay that is unreachable or no longer knows
+        // this device must never leave the entry stuck in the list.
+        Ok(())
+        | Err(AppError::RelayUnreachable | AppError::RelayRefused | AppError::RelayPinMismatch) => {
+            Ok(())
+        }
+        Err(other) => Err(other),
+    }
 }
 
 /// Settings view.

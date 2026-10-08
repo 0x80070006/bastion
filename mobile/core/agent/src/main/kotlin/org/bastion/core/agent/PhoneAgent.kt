@@ -94,6 +94,20 @@ public sealed interface AgentCommand {
         override val messageId: ByteArray,
         public val zones: List<org.bastion.protocol.v1.Geofence>,
     ) : AgentCommand
+
+    /** Start or stop a near-live mirror of the device's own screen. */
+    public class Screen(
+        override val messageId: ByteArray,
+        public val enabled: Boolean,
+        public val fps: Int,
+        public val edgePx: Int,
+        public val durationSeconds: Int,
+        public val keepAwake: Boolean,
+    ) : AgentCommand
+
+    /** A single remote-input action to inject via the accessibility service (fire-and-forget). */
+    public class Input(override val messageId: ByteArray, public val action: org.bastion.protocol.v1.RemoteInput) :
+        AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -497,6 +511,10 @@ public class PhoneAgent(private val sodium: Sodium) {
         private const val MAX_EDGE_PX = 1280
         private const val DEFAULT_STREAM_SECONDS = 60
         private const val MAX_STREAM_SECONDS = 300
+        private const val MAX_SCREEN_FPS = 15
+        private const val MAX_SCREEN_EDGE_PX = 1600
+        private const val DEFAULT_SCREEN_SECONDS = 300
+        private const val MAX_SCREEN_SECONDS = 900
         private const val ROTATION_INTERVAL_MS = 7L * 24 * 3600 * 1000
 
         /** TTL caps per payload type (PROTOCOL.md §6.8). */
@@ -578,11 +596,25 @@ public class PhoneAgent(private val sodium: Sodium) {
 
             Command.KindCase.SET_GEOFENCES -> AgentCommand.SetGeofences(id, command.setGeofences.zonesList)
 
+            Command.KindCase.SCREEN_CONTROL -> AgentCommand.Screen(
+                id,
+                command.screenControl.enabled,
+                command.screenControl.maxFps.coerceIn(MIN_FPS, MAX_SCREEN_FPS),
+                command.screenControl.maxEdgePx.coerceIn(MIN_EDGE_PX, MAX_SCREEN_EDGE_PX),
+                clampScreenDuration(command.screenControl.maxDurationSeconds),
+                command.screenControl.keepAwake,
+            )
+
+            Command.KindCase.REMOTE_INPUT -> AgentCommand.Input(id, command.remoteInput)
+
             else -> null
         }
 
         private fun clampDuration(seconds: Int): Int =
             if (seconds == 0) DEFAULT_STREAM_SECONDS else seconds.coerceIn(1, MAX_STREAM_SECONDS)
+
+        private fun clampScreenDuration(seconds: Int): Int =
+            if (seconds == 0) DEFAULT_SCREEN_SECONDS else seconds.coerceIn(1, MAX_SCREEN_SECONDS)
 
         public fun sanitizeLabel(label: String): String =
             label.filterNot { it.isISOControl() }.trim().take(MAX_LABEL).ifEmpty { "Bastion" }

@@ -113,6 +113,10 @@ pub type FrameSink = Arc<dyn Fn(&[u8], u64, &[u8]) + Send + Sync>;
 /// Pushes a decrypted live audio chunk (device id, sequence, PCM, sample rate) to the webview.
 pub type AudioSink = Arc<dyn Fn(&[u8], u64, &[u8], u32) + Send + Sync>;
 
+/// Pushes a decrypted live screen frame (device id, sequence, JPEG, width, height, locked) to
+/// the webview.
+pub type ScreenSink = Arc<dyn Fn(&[u8], u64, &[u8], u32, u32, bool) + Send + Sync>;
+
 /// Events pushed to the webview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEvent {
@@ -132,6 +136,7 @@ pub struct AppCore {
     emit: Emitter,
     frames: FrameSink,
     audio: AudioSink,
+    screen: ScreenSink,
     generation: AtomicU64,
     poller: Mutex<Option<JoinHandle<()>>>,
     connection: Mutex<Connection>,
@@ -209,7 +214,13 @@ pub fn is_valid_host(host: &str) -> bool {
 
 impl AppCore {
     /// Creates the core; starts the embedded relay right away if configured.
-    pub fn new(paths: Paths, emit: Emitter, frames: FrameSink, audio: AudioSink) -> Arc<Self> {
+    pub fn new(
+        paths: Paths,
+        emit: Emitter,
+        frames: FrameSink,
+        audio: AudioSink,
+        screen: ScreenSink,
+    ) -> Arc<Self> {
         let core = Arc::new(Self {
             paths,
             state: tokio::sync::Mutex::new(None),
@@ -217,6 +228,7 @@ impl AppCore {
             emit,
             frames,
             audio,
+            screen,
             generation: AtomicU64::new(0),
             poller: Mutex::new(None),
             connection: Mutex::new(Connection::Idle),
@@ -704,6 +716,14 @@ impl AppCore {
                     pcm,
                     sample_rate,
                 } => (self.audio)(&device_id, sequence, &pcm, sample_rate),
+                Media::Screen {
+                    device_id,
+                    sequence,
+                    jpeg,
+                    width,
+                    height,
+                    locked,
+                } => (self.screen)(&device_id, sequence, &jpeg, width, height, locked),
             }
         }
         if stored_photo {

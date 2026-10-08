@@ -49,6 +49,21 @@ simulée dans l'app.
   déverrouillage.
 * Recommandé : ports USB « charge uniquement » verrouillé.
 
+## Contrôle à distance (recopie d'écran + saisie)
+
+* **Jamais de contournement du verrouillage** : tant qu'un keyguard sécurisé est affiché, aucune
+  saisie n'est injectée (seul le réveil de l'écran est honoré). Le code PIN ne peut pas être entré
+  à distance — c'est une frontière de l'OS, strictement appliquée par GrapheneOS. Le contrôle
+  complet n'est donc possible que téléphone déverrouillé (ou sans verrou sécurisé).
+* **Cadence ~1 image/s** : `AccessibilityService.takeScreenshot()` est limité par l'OS à environ
+  une capture par seconde. Suffisant pour piloter, pas pour une vidéo fluide.
+* **Activation par le propriétaire** : la recopie exige que le service d'accessibilité Bastion soit
+  activé une fois sur le téléphone (ou un provisionnement Device Owner). Un voleur ne peut pas
+  l'activer après un vol ; c'est une fonctionnalité de confort pour son propre appareil, pas un
+  outil d'espionnage discret (l'indicateur d'accessibilité reste visible).
+* **Surfaces sécurisées** : les fenêtres marquées `FLAG_SECURE` / DRM apparaissent noires dans la
+  capture, comme pour toute capture d'écran.
+
 ## Réglages OS recommandés
 
 1. Code de verrouillage fort (6+ chiffres ou phrase de passe).

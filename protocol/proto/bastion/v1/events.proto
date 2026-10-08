@@ -18,6 +18,7 @@ message Event {
     LastChanceBeacon last_chance = 5;
     MediaFrame media_frame = 6;
     AudioChunk audio_chunk = 7;
+    ScreenFrame screen_frame = 8;
   }
 }
 
@@ -151,6 +152,23 @@ message AudioChunk {
   // 16-bit mono PCM, max 384 KiB.
   bytes pcm = 3;
   uint32 sample_rate = 4;
+}
+
+// One frame of a near-live screen mirror (ScreenControl). Frames are ordinary end-to-end events;
+// the controller drops out-of-order or stale frames by sequence and timestamp. `width`/`height`
+// are the transmitted frame's pixels; the controller maps normalised RemoteInput coordinates
+// against them.
+message ScreenFrame {
+  // Strictly increasing within one screen session.
+  uint64 sequence = 1;
+  int64 captured_at_ms = 2;
+  // JPEG, max 384 KiB (the phone lowers quality/size to fit before encryption).
+  bytes jpeg = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  // True when the phone is currently showing a secure keyguard, so input is being withheld and
+  // the controller should show a "locked" hint.
+  bool locked = 6;
 }
 
 message LastChanceBeacon {

@@ -65,6 +65,9 @@ class DeviceState(private val context: Context) {
 
     fun isScreenLocked(): Boolean = context.getSystemService<KeyguardManager>()?.isDeviceSecure == true
 
+    /** Whether a secure keyguard is showing right now (used to withhold remote input). */
+    fun isKeyguardLocked(): Boolean = context.getSystemService<KeyguardManager>()?.isKeyguardLocked == true
+
     fun health(relayOk: Boolean?): List<HealthItem> = listOf(
         HealthItem(HealthId.SCREEN_LOCK, isScreenLocked()),
         HealthItem(HealthId.LOCATION, hasLocation()),

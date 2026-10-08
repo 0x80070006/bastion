@@ -126,6 +126,28 @@ export const fr = {
   "camera.listenStop": "Couper le micro",
   "camera.listening": "Micro en direct",
 
+  "remote.title": "Contrôle à distance",
+  "remote.start": "Prendre le contrôle",
+  "remote.stop": "Rendre le contrôle",
+  "remote.connecting": "Réveil et recopie de l'écran…",
+  "remote.live": "Écran · {fps} i/s",
+  "remote.locked":
+    "Téléphone verrouillé — la saisie est bloquée jusqu'au déverrouillage sur l'appareil.",
+  "remote.hint": "Clic pour toucher, glisser pour balayer. Saisissez du texte pour le champ actif.",
+  "remote.indicator":
+    "Un indicateur de recopie d'écran reste affiché sur le téléphone en permanence. Vous seul, depuis cet ordinateur apparié, pouvez le contrôler ; le code de l'écran verrouillé ne peut jamais être contourné à distance.",
+  "remote.keepAwake": "Garder l'écran allumé",
+  "remote.text": "Texte à saisir",
+  "remote.send": "Envoyer",
+  "remote.back": "Retour",
+  "remote.home": "Accueil",
+  "remote.recents": "Récents",
+  "remote.notifications": "Notifications",
+  "remote.wake": "Réveil",
+  "remote.lock": "Verrouiller",
+  "remote.unsupported":
+    "Cet appareil ne peut pas recopier son écran (Android 11+ et le service d'accessibilité Bastion requis).",
+
   "command.ring": "Sonnerie",
   "command.stopRing": "Arrêt sonnerie",
   "command.locate": "Localisation",
@@ -135,6 +157,8 @@ export const fr = {
   "command.capturePhoto": "Photo",
   "command.stream": "Caméra en direct",
   "command.audio": "Micro en direct",
+  "command.screen": "Contrôle à distance",
+  "command.input": "Saisie à distance",
   "command.wipe": "Effacement",
   "command.unpair": "Désappairage",
   "command.status": "État",

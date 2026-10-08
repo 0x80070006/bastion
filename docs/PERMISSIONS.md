@@ -20,6 +20,14 @@ manifeste DOIT figurer ici.
 | `VIBRATE` | sonnerie à distance | installation | sonnerie sans vibration |
 | `USE_BIOMETRIC` | verrou de l'application | installation | code de l'appareil |
 | Admin d'appareil (`BIND_DEVICE_ADMIN`) : `force-lock`, `wipe-data`, `watch-login` | verrouillage, effacement, échecs de déverrouillage | écran Santé | verrouillage / effacement indisponibles |
+| Service d'accessibilité (`BIND_ACCESSIBILITY_SERVICE`) : `canTakeScreenshot`, `canPerformGestures`, `canRetrieveWindowContent` | contrôle à distance (recopie d'écran + toucher/balayage/texte/navigation) | **optionnel**, activé par le propriétaire dans *Réglages → Accessibilité → Contrôle à distance Bastion* | contrôle à distance indisponible |
+
+Le **contrôle à distance** est facultatif et n'est **pas** un prérequis de protection : tant que
+le propriétaire n'a pas activé le service d'accessibilité (ou provisionné Device Owner), une
+commande de recopie d'écran est refusée avec le motif `accessibility_disabled`. La capture utilise
+`takeScreenshot()` (pas `MediaProjection`, donc pas de boîte de consentement par session) et
+l'indicateur d'accessibilité du système reste visible en continu. La saisie n'atteint jamais un
+écran verrouillé sécurisé (voir LIMITATIONS.md).
 
 La lampe torche (`CameraManager.setTorchMode`) et la lecture de l'opérateur SIM
 (`TelephonyManager.getSimOperator`, pour la détection de changement de SIM) ne nécessitent pas

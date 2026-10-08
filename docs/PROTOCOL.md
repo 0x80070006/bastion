@@ -132,10 +132,14 @@ croissant par direction, persisté avant envoi), `timestamp_ms`, `ttl_seconds`, 
 
 Commandes PC→téléphone : `Ring`/`StopRing`, `LocateNow`, `SetTrackingMode`, `LostMode`, `Lock`*,
 `Wipe`*, `Unpair`*, `RequestStatus`, `CapturePhoto`, `StreamControl` (flux caméra), `AudioControl`
-(flux micro), `SetGeofences` (zones). Événements téléphone→PC : `LocationReport`, `StatusReport`,
+(flux micro), `SetGeofences` (zones), `ScreenControl` (recopie d'écran), `RemoteInput`
+(contrôle à distance : toucher/balayage/texte/navigation, coordonnées normalisées 0..1).
+Événements téléphone→PC : `LocationReport`, `StatusReport`,
 `Alert` (dont SIM, géorepérage, échec de déverrouillage), `PhotoReport`, `MediaFrame` (JPEG),
-`AudioChunk` (PCM 16 bits mono), `LastChanceBeacon`. (* = contresignature `PK`.) La photo, les
-trames caméra/audio et les zones empruntent le même canal chiffré que les commandes (ADR-0022).
+`AudioChunk` (PCM 16 bits mono), `ScreenFrame` (JPEG, avec `locked`), `LastChanceBeacon`.
+(* = contresignature `PK`.) La photo, les trames caméra/audio/écran et les zones empruntent le
+même canal chiffré que les commandes (ADR-0022, ADR-0026). `RemoteInput` est envoyé avec un TTL
+court (15 s) et sans historique de commande.
 
 ## 6. Règles de réception (DOIT, dans cet ordre)
 

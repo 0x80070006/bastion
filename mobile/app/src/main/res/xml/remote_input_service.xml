@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuration of the Bastion remote-control accessibility service. It captures the screen
+  (takeScreenshot, no MediaProjection consent dialog) and injects gestures/text, but only when
+  driven by the end-to-end-authenticated ProtectionService. canTakeScreenshot requires Android 11+.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/remote_input_service_description"
+    android:notificationTimeout="100"
+    android:summary="@string/remote_input_service_description"
+    tools:targetApi="30" />

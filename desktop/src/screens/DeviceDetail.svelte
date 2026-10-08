@@ -3,6 +3,7 @@
   import MapView from "../lib/components/MapView.svelte";
   import ActionDialogs, { type DialogKind } from "./ActionDialogs.svelte";
   import CameraPanel from "./CameraPanel.svelte";
+  import ScreenPanel from "./ScreenPanel.svelte";
   import {
     api,
     errorCode,
@@ -270,6 +271,8 @@
       </div>
 
       <CameraPanel deviceId={device.id} {active} {revision} />
+
+      <ScreenPanel deviceId={device.id} {active} />
 
       {#if detail.commands.length > 0}
         <h2>{t("device.commands")}</h2>

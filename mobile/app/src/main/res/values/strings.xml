@@ -23,4 +23,6 @@
     <string name="pair_error_pin">Le relay ne présente pas la clé attendue : connexion refusée.</string>
     <string name="pair_error_unreachable">Relay injoignable. Le téléphone et le PC sont-ils sur le même réseau ?</string>
     <string name="pair_error_refused">Le relay a refusé l\'appairage (code déjà utilisé ou expiré).</string>
+    <string name="remote_input_service_label">Contrôle à distance Bastion</string>
+    <string name="remote_input_service_description">Permet au propriétaire apparié de voir l\'écran et de commander le téléphone à distance (toucher, balayer, saisir). Utilisé uniquement via le canal chiffré de bout en bout ; l\'écran verrouillé n\'est jamais contourné.</string>
 </resources>

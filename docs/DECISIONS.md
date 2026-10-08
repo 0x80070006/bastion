@@ -212,3 +212,21 @@ remplacé est marqué *Remplacé par ADR-xxxx*.
   chaque position (Haversine + hystérésis), ce qui permet d'alerter (`GEOFENCE_ENTER/EXIT`) et de
   passer en suivi rapproché même quand le PC est hors ligne. Logique pure testée sans Android.
 
+## ADR-0026 — Contrôle à distance (écran + saisie) via service d'accessibilité
+
+* **Décision** : la recopie d'écran et le pilotage à distance (toucher, balayage, texte,
+  navigation) reposent sur un **service d'accessibilité** (`RemoteInputService`) et non sur
+  `MediaProjection`. Le service capture l'écran avec `takeScreenshot()` (Android 11+), sans boîte
+  de consentement par session, et injecte les gestes avec `dispatchGesture()`. Nouveaux messages
+  protocole : `ScreenControl`/`ScreenFrame` (JPEG, même canal chiffré de bout en bout que les
+  autres médias, ADR-0022) et `RemoteInput` (coordonnées normalisées 0..1, TTL court de 15 s,
+  envoyé en « tire-et-oublie » sans historique ni journal pour ne pas noyer la liste de commandes).
+* **Limites assumées** : `takeScreenshot` est bridé par l'OS à ~1 image/s. La saisie n'atteint
+  **jamais** un écran verrouillé sécurisé : tant que le keyguard est affiché, seule l'action `WAKE`
+  est honorée (le code PIN ne peut pas être contourné à distance — frontière OS, renforcée sous
+  GrapheneOS). La capture exige que le propriétaire active une fois le service d'accessibilité (ou
+  un provisionnement Device Owner) ; un voleur ne peut donc pas l'activer après coup.
+* **Conséquences** : fonctionnalité de confort pour son propre téléphone, cohérente avec le modèle
+  « toujours visible » (indicateur d'accessibilité affiché en continu, ADR-0023), sans WebRTC ni
+  tunnel séparé (ADR-0019). Côté PC, panneau interactif dédié (clic = toucher, glisser = balayage).
+

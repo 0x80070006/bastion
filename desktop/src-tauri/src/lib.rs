@@ -78,6 +78,24 @@ fn audio_sink(app: AppHandle) -> crate::core::AudioSink {
     )
 }
 
+/// Pushes a live screen-mirror frame to the webview as a base64 JPEG (payload stays off disk).
+fn screen_sink(app: AppHandle) -> crate::core::ScreenSink {
+    use base64::Engine;
+    Arc::new(
+        move |device_id: &[u8], sequence: u64, jpeg: &[u8], width: u32, height: u32, locked: bool| {
+            let payload = serde_json::json!({
+                "deviceId": hex::encode(device_id),
+                "sequence": sequence,
+                "jpeg": base64::engine::general_purpose::STANDARD.encode(jpeg),
+                "width": width,
+                "height": height,
+                "locked": locked,
+            });
+            let _ = app.emit("bastion://screen", payload);
+        },
+    )
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Ouvrir / Open", true, None::<&str>)?;
     let lock = MenuItem::with_id(app, "lock", "Verrouiller / Lock", true, None::<&str>)?;
@@ -139,6 +157,7 @@ pub fn run() {
                 emitter(app.handle().clone()),
                 frame_sink(app.handle().clone()),
                 audio_sink(app.handle().clone()),
+                screen_sink(app.handle().clone()),
             );
             app.manage(Arc::clone(&core));
             tauri::async_runtime::spawn(async move {
@@ -195,6 +214,7 @@ pub fn run() {
             commands::photo,
             commands::geofences,
             commands::set_geofences,
+            commands::remote_input,
             commands::arm_wipe,
             commands::disarm_wipe,
             commands::send_sensitive,

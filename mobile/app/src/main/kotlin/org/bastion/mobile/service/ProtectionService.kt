@@ -38,11 +38,14 @@ import org.bastion.protocol.v1.AudioChunk
 import org.bastion.protocol.v1.CapturePhoto
 import org.bastion.protocol.v1.CommandResult.Status
 import org.bastion.protocol.v1.Event
+import org.bastion.protocol.v1.GlobalAction
 import org.bastion.protocol.v1.LastChanceBeacon
 import org.bastion.protocol.v1.LocationReport
 import org.bastion.protocol.v1.MailboxItem
 import org.bastion.protocol.v1.MediaFrame
 import org.bastion.protocol.v1.PhotoReport
+import org.bastion.protocol.v1.RemoteInput
+import org.bastion.protocol.v1.ScreenFrame
 import org.bastion.protocol.v1.StatusReport
 import org.bastion.protocol.v1.TrackingMode
 
@@ -65,6 +68,7 @@ class ProtectionService : Service() {
     private var periodic: Job? = null
     private var streamJob: Job? = null
     private var audioJob: Job? = null
+    private var screenJob: Job? = null
     private var lastTrackedFixMs = 0L
     private var appliedTracking = -1
 
@@ -136,6 +140,8 @@ class ProtectionService : Service() {
         locator.stopTracking()
         streamJob?.cancel()
         audioJob?.cancel()
+        screenJob?.cancel()
+        RemoteInputService.instance?.setKeepAwake(false)
         scope.cancel()
         super.onDestroy()
     }
@@ -266,7 +272,10 @@ class ProtectionService : Service() {
     @Suppress("CyclomaticComplexMethod")
     private suspend fun execute(command: AgentCommand) {
         val id = command.messageId
-        repository.log("command.${command.javaClass.simpleName.lowercase()}")
+        // Remote input fires several times a second; journaling each tap would be noise.
+        if (command !is AgentCommand.Input) {
+            repository.log("command.${command.javaClass.simpleName.lowercase()}")
+        }
         when (command) {
             is AgentCommand.Ring -> {
                 alarm.start(scope, command.durationSeconds, command.flashlight, command.vibrate)
@@ -314,7 +323,65 @@ class ProtectionService : Service() {
             is AgentCommand.Audio -> audio(command)
 
             is AgentCommand.SetGeofences -> setGeofences(command)
+
+            is AgentCommand.Screen -> screen(command)
+
+            is AgentCommand.Input -> input(command)
         }
+    }
+
+    private fun screen(command: AgentCommand.Screen) {
+        screenJob?.cancel()
+        if (!command.enabled) {
+            RemoteInputService.instance?.setKeepAwake(false)
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_COMPLETED) }
+            return
+        }
+        val service = RemoteInputService.instance
+        if (service == null || !service.canCapture()) {
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_FAILED, "accessibility_disabled") }
+            return
+        }
+        screenJob = scope.launch {
+            repository.sendResult(command.messageId, Status.STATUS_ACCEPTED)
+            if (command.keepAwake) service.setKeepAwake(true)
+            // takeScreenshot is rate-limited by the OS to about one per second.
+            val frameIntervalMs = (MILLIS_PER_SECOND / command.fps).coerceAtLeast(SCREEN_MIN_INTERVAL_MS)
+            val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
+            var sequence = 0L
+            try {
+                while (isActive && System.currentTimeMillis() < endAt) {
+                    val started = System.currentTimeMillis()
+                    val frame = service.capture(command.edgePx, SCREEN_JPEG_QUALITY)
+                    if (frame != null && !sendScreenFrame(sequence++, frame)) break
+                    val elapsed = System.currentTimeMillis() - started
+                    delay((frameIntervalMs - elapsed).coerceAtLeast(0))
+                }
+            } finally {
+                service.setKeepAwake(false)
+            }
+        }
+    }
+
+    private suspend fun sendScreenFrame(sequence: Long, frame: CapturedScreen): Boolean {
+        val screen = ScreenFrame.newBuilder()
+            .setSequence(sequence)
+            .setCapturedAtMs(System.currentTimeMillis())
+            .setJpeg(com.google.protobuf.ByteString.copyFrom(frame.jpeg))
+            .setWidth(frame.width)
+            .setHeight(frame.height)
+            .setLocked(device.isKeyguardLocked())
+            .build()
+        return repository.sendEvent(Event.newBuilder().setScreenFrame(screen).build())
+    }
+
+    /** Injects a remote-input action. While a secure keyguard shows, only WAKE is honoured. */
+    private fun input(command: AgentCommand.Input) {
+        val service = RemoteInputService.instance ?: return
+        val isWake = command.action.actionCase == RemoteInput.ActionCase.GLOBAL &&
+            command.action.global == GlobalAction.GLOBAL_ACTION_WAKE
+        if (device.isKeyguardLocked() && !isWake) return
+        service.inject(command.action)
     }
 
     @Suppress("LoopWithTooManyJumpStatements")
@@ -624,6 +691,10 @@ class ProtectionService : Service() {
         private const val PHOTO_EDGE_PX = 1280
         private const val MILLIS_PER_SECOND = 1000L
         private const val MIN_FRAME_MS = 100L
+
+        /** takeScreenshot is OS-rate-limited to ~1 Hz; do not request frames faster. */
+        private const val SCREEN_MIN_INTERVAL_MS = 1000L
+        private const val SCREEN_JPEG_QUALITY = 70
 
         fun start(context: Context, action: String? = null) {
             val intent = Intent(context, ProtectionService::class.java).setAction(action)

@@ -355,7 +355,9 @@
   .lightbox {
     position: fixed;
     inset: 0;
-    z-index: 10;
+    /* Above Leaflet's tile panes and controls (which reach z-index ~1000), so an
+       enlarged photo is never overlapped by the map behind it. */
+    z-index: 2000;
     display: flex;
     flex-direction: column;
     align-items: center;

@@ -121,7 +121,25 @@ export type CommandRequest =
       edgePx: number;
       durationSeconds: number;
     }
-  | { kind: "audio"; enabled: boolean; durationSeconds: number };
+  | { kind: "audio"; enabled: boolean; durationSeconds: number }
+  | {
+      kind: "screen";
+      enabled: boolean;
+      fps: number;
+      edgePx: number;
+      durationSeconds: number;
+      keepAwake: boolean;
+    };
+
+export type GlobalInputAction =
+  "back" | "home" | "recents" | "notifications" | "quickSettings" | "wake" | "lock";
+
+/** A remote-input action. Coordinates are normalised to 0..1 of the phone's display. */
+export type RemoteInputRequest =
+  | { kind: "tap"; x: number; y: number; longPress: boolean }
+  | { kind: "swipe"; x1: number; y1: number; x2: number; y2: number; durationMs: number }
+  | { kind: "text"; text: string; submit: boolean }
+  | { kind: "global"; action: GlobalInputAction };
 
 export interface PhotoView {
   id: string;
@@ -152,6 +170,16 @@ export interface AudioChunkMsg {
   sequence: number;
   pcm: string;
   sampleRate: number;
+}
+
+/** A live screen-mirror frame pushed from the backend. */
+export interface ScreenFrame {
+  deviceId: string;
+  sequence: number;
+  jpeg: string;
+  width: number;
+  height: number;
+  locked: boolean;
 }
 
 export type SensitiveRequest =
@@ -230,6 +258,8 @@ export const api = {
   sendSensitive: (id: string, password: string, request: SensitiveRequest) =>
     invoke<null>("send_sensitive", { id, password, request }),
   forgetDevice: (id: string, password: string) => invoke<null>("forget_device", { id, password }),
+  remoteInput: (id: string, input: RemoteInputRequest) =>
+    invoke<null>("remote_input", { id, input }),
   settings: () => invoke<SettingsView>("settings"),
   updateSettings: (update: {
     autoLockMinutes: number;
@@ -253,4 +283,9 @@ export async function onFrame(handler: (frame: StreamFrame) => void): Promise<Un
 /** Subscribes to live audio chunks. */
 export async function onAudio(handler: (chunk: AudioChunkMsg) => void): Promise<UnlistenFn> {
   return listen<AudioChunkMsg>("bastion://audio", (event) => handler(event.payload));
+}
+
+/** Subscribes to live screen-mirror frames. */
+export async function onScreen(handler: (frame: ScreenFrame) => void): Promise<UnlistenFn> {
+  return listen<ScreenFrame>("bastion://screen", (event) => handler(event.payload));
 }

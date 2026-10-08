@@ -25,6 +25,10 @@ message Command {
     StreamControl stream_control = 11;
     AudioControl audio_control = 12;
     SetGeofences set_geofences = 13;
+    // Owner remote control of the device's own screen (requires a one-time on-device consent,
+    // or Device Owner provisioning). Never bypasses the lock screen.
+    ScreenControl screen_control = 14;
+    RemoteInput remote_input = 15;
   }
 }
 
@@ -123,6 +127,71 @@ message Geofence {
 // Replaces the full set of geofences on the phone (empty list disables geofencing).
 message SetGeofences {
   repeated Geofence zones = 1;
+}
+
+// Near-live mirror of the phone's own display over the end-to-end channel, for the owner to
+// see and (with RemoteInput) drive their phone like an emulator. Capturing the screen requires
+// an explicit on-device consent that only the owner can grant (a thief cannot), or the app being
+// provisioned as Device Owner. The phone enforces a maximum duration; the OS screen-cast
+// indicator is always visible. Secure/DRM surfaces appear blank in the capture.
+message ScreenControl {
+  bool enabled = 1;
+  // Target frames per second, clamped by the phone to 1..15.
+  uint32 max_fps = 2;
+  // Longest edge of each frame in pixels, clamped by the phone (e.g. 240..1600).
+  uint32 max_edge_px = 3;
+  // Hard stop after this many seconds, clamped by the phone to 1..900 (0 = phone default).
+  uint32 max_duration_seconds = 4;
+  // Keep the screen awake while mirroring (wakes a sleeping display; never unlocks it).
+  bool keep_awake = 5;
+}
+
+// A single input action injected into the phone, via its accessibility service. Coordinates are
+// normalised to 0..1 of the current display, so they are independent of the frame resolution.
+// Input never reaches a locked keyguard: while the phone is locked, only WAKE is honoured.
+message RemoteInput {
+  oneof action {
+    Tap tap = 1;
+    Swipe swipe = 2;
+    TextInput text = 3;
+    GlobalAction global = 4;
+  }
+}
+
+message Tap {
+  float x = 1;
+  float y = 2;
+  // Long press instead of a short tap.
+  bool long_press = 3;
+}
+
+message Swipe {
+  float x1 = 1;
+  float y1 = 2;
+  float x2 = 3;
+  float y2 = 4;
+  // Gesture duration, clamped by the phone to 20..3000 ms.
+  uint32 duration_ms = 5;
+}
+
+message TextInput {
+  // UTF-8 text to insert into the focused field, max 2048 bytes (enforced by the receiver).
+  string text = 1;
+  // Submit after inserting (presses the editor action / Enter).
+  bool submit = 2;
+}
+
+enum GlobalAction {
+  GLOBAL_ACTION_UNSPECIFIED = 0;
+  GLOBAL_ACTION_BACK = 1;
+  GLOBAL_ACTION_HOME = 2;
+  GLOBAL_ACTION_RECENTS = 3;
+  GLOBAL_ACTION_NOTIFICATIONS = 4;
+  GLOBAL_ACTION_QUICK_SETTINGS = 5;
+  // Wake the display (PowerManager wake lock); does not unlock the keyguard.
+  GLOBAL_ACTION_WAKE = 6;
+  // Lock the screen (accessibility lock; API 28+).
+  GLOBAL_ACTION_LOCK = 7;
 }
 
 message Wipe {

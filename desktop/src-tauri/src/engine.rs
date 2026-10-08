@@ -38,6 +38,9 @@ const EVENT_TTL_MAX_S: u32 = 7 * 24 * 3600;
 const ROTATION_INTERVAL_MS: i64 = 7 * 24 * 3600 * 1000;
 const MAX_SEEN_IDS: usize = 4096;
 const MAX_LOCATIONS_PER_REPORT: usize = 64;
+/// TTL of a remote-input command: short, so a tap that cannot be delivered promptly is dropped
+/// by the phone rather than acted on late.
+const INPUT_TTL_SECONDS: u32 = 15;
 /// Lifetime of a pairing invitation.
 pub const INVITE_TTL_MS: i64 = 300_000;
 
@@ -102,6 +105,21 @@ pub enum Media {
         /// Sample rate in Hz.
         sample_rate: u32,
     },
+    /// A live screen-mirror frame to display, never persisted.
+    Screen {
+        /// Device that sent it.
+        device_id: Vec<u8>,
+        /// Sequence within the screen session.
+        sequence: u64,
+        /// JPEG bytes.
+        jpeg: Vec<u8>,
+        /// Transmitted frame width in pixels (for mapping input coordinates).
+        width: u32,
+        /// Transmitted frame height in pixels.
+        height: u32,
+        /// The phone is showing a secure keyguard, so input is withheld.
+        locked: bool,
+    },
 }
 
 struct PendingInvite {
@@ -142,6 +160,8 @@ pub fn command_kind(command: &Command) -> &'static str {
         Some(command::Kind::StreamControl(_)) => "stream",
         Some(command::Kind::AudioControl(_)) => "audio",
         Some(command::Kind::SetGeofences(_)) => "geofences",
+        Some(command::Kind::ScreenControl(_)) => "screen",
+        Some(command::Kind::RemoteInput(_)) => "input",
         None => "unknown",
     }
 }
@@ -590,6 +610,7 @@ impl Session {
         (Vec::new(), Vec::new())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn apply_event(&mut self, index: usize, event: Event, now_ms: i64) -> Vec<Notice> {
         let mut notices = Vec::new();
         let (kind, detail, location) = match event.kind {
@@ -671,6 +692,19 @@ impl Session {
                         sequence: chunk.sequence,
                         pcm: chunk.pcm,
                         sample_rate: chunk.sample_rate,
+                    });
+                }
+                return notices;
+            }
+            Some(event::Kind::ScreenFrame(frame)) => {
+                if valid_jpeg(&frame.jpeg) {
+                    self.media.push(Media::Screen {
+                        device_id: self.data.devices[index].device_id.clone(),
+                        sequence: frame.sequence,
+                        jpeg: frame.jpeg,
+                        width: frame.width,
+                        height: frame.height,
+                        locked: frame.locked,
                     });
                 }
                 return notices;
@@ -832,6 +866,33 @@ impl Session {
             Some(kind.to_owned()),
         );
         Ok(action)
+    }
+
+    /// Sends a fire-and-forget remote-input command to an active device. Unlike [`command`],
+    /// nothing is recorded in the command history or journal (taps fire several times a second),
+    /// and a short TTL means a tap that could not be delivered quickly is dropped by the phone
+    /// instead of landing late.
+    ///
+    /// # Errors
+    /// [`AppError::UnknownDevice`], [`AppError::NotActive`], [`AppError::InvalidInput`].
+    pub fn input(&mut self, device_id: &[u8], command: Command, now_ms: i64) -> AppResult<Action> {
+        if !matches!(command.kind, Some(command::Kind::RemoteInput(_))) {
+            return Err(AppError::InvalidInput);
+        }
+        let index = self
+            .data
+            .device_index(device_id)
+            .ok_or(AppError::UnknownDevice)?;
+        if self.data.devices[index].state != PairingState::Active {
+            return Err(AppError::NotActive);
+        }
+        self.seal_to(
+            index,
+            message_body::Payload::Command(command),
+            INPUT_TTL_SECONDS,
+            None,
+            now_ms,
+        )
     }
 
     fn seal_to(

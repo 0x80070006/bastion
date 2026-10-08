@@ -21,8 +21,8 @@ use bastion_desktop_lib::engine::{Action, Media, Session};
 use bastion_desktop_lib::model::{PairingState, RelaySettings};
 use bastion_desktop_lib::relay_client::RelayClient;
 use bastion_proto::v1::{
-    AudioControl, CapturePhoto, Command, LocateNow, RequestStatus, Ring, StopRing, StreamControl,
-    capture_photo, command,
+    AudioControl, CapturePhoto, Command, LocateNow, RemoteInput, RequestStatus, Ring, ScreenControl,
+    StopRing, StreamControl, Tap, capture_photo, command, remote_input,
 };
 use bastion_relay::{Config, Relay};
 
@@ -85,9 +85,11 @@ async fn main() {
     let mut stream_sent = false;
     let mut audio_sent = false;
     let mut geofences_sent = false;
+    let mut screen_sent = false;
     let mut photos = 0usize;
     let mut frames = 0usize;
     let mut chunks = 0usize;
+    let mut screens = 0usize;
     let mut seen_journal = 0;
     let deadline = std::time::Instant::now() + Duration::from_secs(900);
     while std::time::Instant::now() < deadline {
@@ -115,6 +117,22 @@ async fn main() {
                     } => {
                         chunks += 1;
                         println!("AUDIO seq={sequence} {} bytes @{sample_rate}Hz", pcm.len());
+                    }
+                    Media::Screen {
+                        sequence,
+                        jpeg,
+                        width,
+                        height,
+                        locked,
+                        ..
+                    } => {
+                        screens += 1;
+                        println!(
+                            "SCREEN seq={sequence} {}x{} {} bytes locked={locked}",
+                            width,
+                            height,
+                            jpeg.len(),
+                        );
                     }
                 }
             }
@@ -291,9 +309,51 @@ async fn main() {
                 && d.commands
                     .iter()
                     .any(|c| c.kind == "geofences" && c.status == "completed")
+                && !screen_sent
             {
+                println!("geofencing ok, exercising remote control (screen + input)");
+                let screen = Command {
+                    kind: Some(command::Kind::ScreenControl(ScreenControl {
+                        enabled: true,
+                        max_fps: 2,
+                        max_edge_px: 800,
+                        max_duration_seconds: 6,
+                        keep_awake: true,
+                    })),
+                };
+                let tap = Command {
+                    kind: Some(command::Kind::RemoteInput(RemoteInput {
+                        action: Some(remote_input::Action::Tap(Tap {
+                            x: 0.5,
+                            y: 0.5,
+                            long_press: false,
+                        })),
+                    })),
+                };
+                run(
+                    &client,
+                    vec![session.command(&id, screen, None, now()).unwrap()],
+                )
+                .await;
+                // Fire-and-forget remote input (short TTL, not tracked).
+                run(&client, vec![session.input(&id, tap, now()).unwrap()]).await;
+                screen_sent = true;
+            } else if screen_sent
+                && (screens >= 1
+                    || d.commands
+                        .iter()
+                        .any(|c| c.kind == "screen" && c.status != "sent"))
+            {
+                // On a device without the accessibility service the phone replies
+                // `accessibility_disabled`; with it enabled, ScreenFrame events arrive. Either
+                // outcome proves the command path end to end.
+                let screen_status = d
+                    .commands
+                    .iter()
+                    .find(|c| c.kind == "screen")
+                    .map_or("none", |c| if c.reason.is_empty() { &c.status } else { &c.reason });
                 println!(
-                    "E2E_OK photo={photos} frames={frames} chunks={chunks} geofences=ok (lock, photo, camera, audio and geofencing all worked)"
+                    "E2E_OK photo={photos} frames={frames} chunks={chunks} geofences=ok screens={screens} screen_result={screen_status}"
                 );
                 return;
             }
