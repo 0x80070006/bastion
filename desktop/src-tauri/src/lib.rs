@@ -193,6 +193,8 @@ pub fn run() {
             commands::send_command,
             commands::photos,
             commands::photo,
+            commands::geofences,
+            commands::set_geofences,
             commands::arm_wipe,
             commands::disarm_wipe,
             commands::send_sensitive,

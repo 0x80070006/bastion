@@ -225,6 +225,25 @@ pub struct DeviceRecord {
     /// Anti-intrusion / on-demand photos (metadata; the JPEG lives in the media store).
     #[serde(default)]
     pub photos: VecDeque<PhotoMeta>,
+    /// Geofences watched by this phone.
+    #[serde(default)]
+    pub geofences: Vec<GeofenceDef>,
+}
+
+/// A circular geofence configured for a device.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeofenceDef {
+    /// Stable identifier.
+    pub id: String,
+    /// Label shown in the UI and journal.
+    pub name: String,
+    /// Centre latitude.
+    pub latitude: f64,
+    /// Centre longitude.
+    pub longitude: f64,
+    /// Radius in metres.
+    pub radius_m: f32,
 }
 
 /// Metadata of a stored photo. The JPEG itself is kept as a separate encrypted file named

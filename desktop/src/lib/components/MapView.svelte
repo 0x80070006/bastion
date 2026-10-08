@@ -5,15 +5,26 @@
   import type { LocationPoint } from "../api";
   import { tileUrlTemplate } from "../format";
 
+  interface Zone {
+    latitude: number;
+    longitude: number;
+    radiusM: number;
+    name: string;
+  }
+
   interface Props {
     points: LocationPoint[];
     label: string;
+    zones?: Zone[];
+    editing?: boolean;
+    onMapClick?: (lat: number, lon: number) => void;
   }
 
-  let { points, label }: Props = $props();
+  let { points, label, zones = [], editing = false, onMapClick }: Props = $props();
   let container: HTMLDivElement | undefined = $state();
   let map: L.Map | undefined;
   let layer: L.LayerGroup | undefined;
+  let zoneLayer: L.LayerGroup | undefined;
   let lastFitted = "";
 
   onMount(() => {
@@ -24,13 +35,33 @@
       attribution: "© OpenStreetMap",
     }).addTo(map);
     layer = L.layerGroup().addTo(map);
+    zoneLayer = L.layerGroup().addTo(map);
     map.setView([46.6, 2.4], 5);
+    map.on("click", (e: L.LeafletMouseEvent) => onMapClick?.(e.latlng.lat, e.latlng.lng));
   });
 
   onDestroy(() => map?.remove());
 
+  // Geofence circles, redrawn when the set changes.
+  $effect(() => {
+    if (!map || !zoneLayer) return;
+    zoneLayer.clearLayers();
+    for (const zone of zones) {
+      L.circle([zone.latitude, zone.longitude], {
+        radius: zone.radiusM,
+        color: "#5fa37a",
+        weight: 1,
+        fillColor: "#5fa37a",
+        fillOpacity: 0.1,
+      })
+        .bindTooltip(zone.name || "")
+        .addTo(zoneLayer);
+    }
+  });
+
   $effect(() => {
     if (!map || !layer) return;
+    if (container) container.style.cursor = editing ? "crosshair" : "";
     layer.clearLayers();
     const last = points.at(-1);
     if (!last) return;

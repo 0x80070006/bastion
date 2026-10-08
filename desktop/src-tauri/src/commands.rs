@@ -445,6 +445,86 @@ pub struct PhotoView {
     has_location: bool,
 }
 
+/// A geofence as seen by the UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeofenceView {
+    #[serde(default)]
+    id: String,
+    name: String,
+    latitude: f64,
+    longitude: f64,
+    radius_m: f32,
+}
+
+/// Current geofences of a device.
+#[tauri::command]
+pub async fn geofences(core: Core<'_>, id: String) -> AppResult<Vec<GeofenceView>> {
+    let device_id = parse_device_id(&id)?;
+    core.read(|s| {
+        let d = s
+            .data
+            .devices
+            .iter()
+            .find(|d| d.device_id == device_id)
+            .ok_or(AppError::UnknownDevice)?;
+        Ok(d.geofences
+            .iter()
+            .map(|z| GeofenceView {
+                id: z.id.clone(),
+                name: z.name.clone(),
+                latitude: z.latitude,
+                longitude: z.longitude,
+                radius_m: z.radius_m,
+            })
+            .collect())
+    })
+    .await?
+}
+
+/// Replaces the geofences of a device and pushes them to the phone.
+#[tauri::command]
+pub async fn set_geofences(core: Core<'_>, id: String, zones: Vec<GeofenceView>) -> AppResult<()> {
+    let device_id = parse_device_id(&id)?;
+    if zones.len() > 32 {
+        return Err(AppError::InvalidInput);
+    }
+    let defs: Vec<crate::model::GeofenceDef> = zones
+        .into_iter()
+        .map(|z| {
+            if !z.latitude.is_finite()
+                || !z.longitude.is_finite()
+                || !(-90.0..=90.0).contains(&z.latitude)
+                || !(-180.0..=180.0).contains(&z.longitude)
+                || !z.radius_m.is_finite()
+            {
+                return Err(AppError::InvalidInput);
+            }
+            Ok(crate::model::GeofenceDef {
+                id: if z.id.is_empty() {
+                    hex::encode(bastion_crypto::random::bytes::<8>())
+                } else {
+                    z.id.chars()
+                        .filter(char::is_ascii_alphanumeric)
+                        .take(32)
+                        .collect()
+                },
+                name: z
+                    .name
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(64)
+                    .collect(),
+                latitude: z.latitude,
+                longitude: z.longitude,
+                radius_m: z.radius_m.clamp(50.0, 50_000.0),
+            })
+        })
+        .collect::<AppResult<_>>()?;
+    core.mutate(|s| Ok(((), vec![s.set_geofences(&device_id, defs, now_ms())?])))
+        .await
+}
+
 /// Metadata of a device's stored photos, newest first.
 #[tauri::command]
 pub async fn photos(core: Core<'_>, id: String) -> AppResult<Vec<PhotoView>> {

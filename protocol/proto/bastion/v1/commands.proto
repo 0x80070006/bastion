@@ -24,6 +24,7 @@ message Command {
     RequestStatus request_status = 10;
     StreamControl stream_control = 11;
     AudioControl audio_control = 12;
+    SetGeofences set_geofences = 13;
   }
 }
 
@@ -105,6 +106,23 @@ message AudioControl {
   bool enabled = 1;
   // Hard stop after this many seconds, clamped by the phone to 1..300 (0 = phone default).
   uint32 max_duration_seconds = 2;
+}
+
+// A circular geofence the phone watches, alerting on entry and exit.
+message Geofence {
+  // Stable identifier chosen by the controller.
+  string id = 1;
+  double latitude = 2;
+  double longitude = 3;
+  // Radius in metres (the phone clamps it to a sane minimum).
+  float radius_m = 4;
+  // Human-readable label, max 64 chars.
+  string name = 5;
+}
+
+// Replaces the full set of geofences on the phone (empty list disables geofencing).
+message SetGeofences {
+  repeated Geofence zones = 1;
 }
 
 message Wipe {

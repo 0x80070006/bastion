@@ -27,6 +27,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.bastion.core.agent.AgentCommand
+import org.bastion.core.agent.Geofencing
 import org.bastion.core.agent.PhoneAgent
 import org.bastion.core.domain.model.ContactCard
 import org.bastion.mobile.data.AgentRepository
@@ -311,6 +312,8 @@ class ProtectionService : Service() {
             is AgentCommand.Stream -> stream(command)
 
             is AgentCommand.Audio -> audio(command)
+
+            is AgentCommand.SetGeofences -> setGeofences(command)
         }
     }
 
@@ -543,6 +546,42 @@ class ProtectionService : Service() {
         repository.sendEvent(
             Event.newBuilder().setLocation(LocationReport.newBuilder().addLocations(Locator.toProto(fix))).build(),
         )
+        evaluateGeofences(fix)
+    }
+
+    private suspend fun setGeofences(command: AgentCommand.SetGeofences) {
+        val local = Geofencing.fromWire(command.zones)
+        val fix = locator.lastKnown()
+        val initialized = if (fix != null) Geofencing.evaluate(local, fix.latitude, fix.longitude).first else local
+        updateSettings { it.clearGeofences().addAllGeofences(initialized) }
+        repository.sendResult(command.messageId, Status.STATUS_COMPLETED)
+    }
+
+    private suspend fun evaluateGeofences(fix: Location) {
+        val zones = repository.state.value.settings.geofencesList
+        if (zones.isEmpty()) return
+        val (updated, transitions) = Geofencing.evaluate(zones, fix.latitude, fix.longitude)
+        if (updated != zones) {
+            updateSettings { it.clearGeofences().addAllGeofences(updated) }
+        }
+        for (transition in transitions) {
+            val type = if (transition.entered) {
+                Alert.Type.TYPE_GEOFENCE_ENTER
+            } else {
+                Alert.Type.TYPE_GEOFENCE_EXIT
+            }
+            val alert = Alert.newBuilder()
+                .setType(type)
+                .putDetail("id", transition.id)
+                .setLocation(Locator.toProto(fix))
+            repository.sendEvent(Event.newBuilder().setAlert(alert).build())
+            repository.log("alert.${type.name}")
+        }
+        // Leaving a zone bumps tracking to active (unless already in lost mode).
+        if (transitions.any { !it.entered } && !repository.state.value.settings.lostMode) {
+            updateSettings { it.setTrackingMode(TrackingMode.TRACKING_MODE_ACTIVE_VALUE) }
+            applyTracking()
+        }
     }
 
     private suspend fun sendStatus() {

@@ -131,6 +131,14 @@ export interface PhotoView {
   hasLocation: boolean;
 }
 
+export interface GeofenceView {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusM: number;
+}
+
 /** A live stream frame pushed from the backend. */
 export interface StreamFrame {
   deviceId: string;
@@ -215,6 +223,8 @@ export const api = {
     invoke<null>("send_command", { id, request }),
   photos: (id: string) => invoke<PhotoView[]>("photos", { id }),
   photo: (photoId: string) => invoke<string>("photo", { photoId }),
+  geofences: (id: string) => invoke<GeofenceView[]>("geofences", { id }),
+  setGeofences: (id: string, zones: GeofenceView[]) => invoke<null>("set_geofences", { id, zones }),
   armWipe: (id: string) => invoke<number>("arm_wipe", { id }),
   disarmWipe: (id: string) => invoke<null>("disarm_wipe", { id }),
   sendSensitive: (id: string, password: string, request: SensitiveRequest) =>

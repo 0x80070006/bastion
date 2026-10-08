@@ -3,7 +3,13 @@
   import MapView from "../lib/components/MapView.svelte";
   import ActionDialogs, { type DialogKind } from "./ActionDialogs.svelte";
   import CameraPanel from "./CameraPanel.svelte";
-  import { api, errorCode, type CommandRequest, type DeviceDetail } from "../lib/api";
+  import {
+    api,
+    errorCode,
+    type CommandRequest,
+    type DeviceDetail,
+    type GeofenceView,
+  } from "../lib/api";
   import { dateTime, relativeTime } from "../lib/format";
   import { locale, t, type MessageKey } from "../lib/i18n";
 
@@ -42,6 +48,43 @@
       busy = false;
     }
   }
+
+  // Geofences.
+  let editingZones = $state(false);
+  let zones: GeofenceView[] = $state([]);
+
+  $effect(() => {
+    void revision;
+    const id = device.id;
+    if (!id) return;
+    api
+      .geofences(id)
+      .then((z) => {
+        if (!editingZones) zones = z;
+      })
+      .catch(() => undefined);
+  });
+
+  function addZone(lat: number, lon: number) {
+    if (!editingZones) return;
+    zones = [...zones, { id: "", name: "", latitude: lat, longitude: lon, radiusM: 200 }];
+  }
+
+  async function saveZones() {
+    busy = true;
+    try {
+      await api.setGeofences(device.id, zones);
+      zones = await api.geofences(device.id);
+      editingZones = false;
+      feedback = t("action.sent");
+      feedbackError = false;
+    } catch (e) {
+      feedback = t(`error.${errorCode(e)}`);
+      feedbackError = true;
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <section class="detail" aria-labelledby="device-title">
@@ -62,17 +105,82 @@
     <div class="map-area">
       {#if !onlineMap}
         <p class="placeholder">{t("device.mapDisabled")}</p>
-      {/if}
-      {#if last}
-        {#if onlineMap}<MapView points={detail.locations} label={device.label} />{/if}
-        <p class="mono coords">
-          {last.latitude.toFixed(5)}, {last.longitude.toFixed(5)}
-          · {t("device.accuracy", { meters: Math.round(last.accuracyM) })}
-          · {dateTime(locale, last.fixTimeMs)}
-          · {t("device.positions", { count: detail.locations.length })}
-        </p>
       {:else}
-        <p class="placeholder">{t("device.noLocation")}</p>
+        <MapView
+          points={detail.locations}
+          label={device.label}
+          {zones}
+          editing={editingZones}
+          onMapClick={addZone}
+        />
+        {#if last}
+          <p class="mono coords">
+            {last.latitude.toFixed(5)}, {last.longitude.toFixed(5)}
+            · {t("device.accuracy", { meters: Math.round(last.accuracyM) })}
+            · {dateTime(locale, last.fixTimeMs)}
+            · {t("device.positions", { count: detail.locations.length })}
+          </p>
+        {:else}
+          <p class="coords">{t("device.noLocation")}</p>
+        {/if}
+        <div class="zones">
+          <div class="zones-head">
+            <span>{t("zones.title")}</span>
+            {#if editingZones}
+              <span class="hint">{t("zones.hint")}</span>
+            {:else}
+              <Button variant="ghost" onclick={() => (editingZones = true)}
+                >{t("zones.edit")}</Button
+              >
+            {/if}
+          </div>
+          {#if editingZones}
+            {#each zones as zone, i (i)}
+              <div class="zone-row">
+                <input
+                  class="zone-name"
+                  placeholder={t("zones.name")}
+                  bind:value={zone.name}
+                  maxlength="64"
+                />
+                <input
+                  class="zone-radius mono"
+                  type="number"
+                  min="50"
+                  max="50000"
+                  bind:value={zone.radiusM}
+                  aria-label={t("zones.radius")}
+                />
+                <span class="mono unit">m</span>
+                <Button variant="ghost" onclick={() => (zones = zones.filter((_, j) => j !== i))}>
+                  {t("action.close")}
+                </Button>
+              </div>
+            {/each}
+            <div class="zone-actions">
+              <Button
+                onclick={() => {
+                  editingZones = false;
+                  zones = [];
+                  void api.geofences(device.id).then((z) => (zones = z));
+                }}
+              >
+                {t("action.cancel")}
+              </Button>
+              <Button variant="primary" disabled={!active || busy} onclick={saveZones}>
+                {t("zones.save")}
+              </Button>
+            </div>
+          {:else if zones.length === 0}
+            <p class="hint">{t("zones.none")}</p>
+          {:else}
+            <ul class="zone-list">
+              {#each zones as zone (zone.id)}
+                <li>{zone.name || t("zones.unnamed")} · {Math.round(zone.radiusM)} m</li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {/if}
     </div>
 
@@ -263,6 +371,71 @@
   }
 
   .coords {
+    margin: 0;
+    font-size: var(--type-caption-size);
+    color: var(--color-text-secondary);
+  }
+
+  .zones {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .zones-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--type-label-size);
+    color: var(--color-text-secondary);
+  }
+
+  .zone-row {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: center;
+  }
+
+  .zone-name {
+    flex: 1;
+  }
+
+  .zone-radius {
+    width: 88px;
+  }
+
+  .zone-name,
+  .zone-radius {
+    min-height: 32px;
+    padding: 0 var(--space-xs);
+    border-radius: var(--radius-sm);
+    border: var(--border-width) solid var(--color-border-active);
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font: inherit;
+  }
+
+  .unit {
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption-size);
+  }
+
+  .zone-actions {
+    display: flex;
+    gap: var(--space-xs);
+    justify-content: flex-end;
+    margin-top: var(--space-xs);
+  }
+
+  .zone-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: var(--type-label-size);
+    color: var(--color-text-secondary);
+  }
+
+  .hint {
     margin: 0;
     font-size: var(--type-caption-size);
     color: var(--color-text-secondary);

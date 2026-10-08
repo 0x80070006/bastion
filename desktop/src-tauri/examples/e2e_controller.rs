@@ -84,6 +84,7 @@ async fn main() {
     let mut photo_sent = false;
     let mut stream_sent = false;
     let mut audio_sent = false;
+    let mut geofences_sent = false;
     let mut photos = 0usize;
     let mut frames = 0usize;
     let mut chunks = 0usize;
@@ -260,7 +261,7 @@ async fn main() {
                 )
                 .await;
                 audio_sent = true;
-            } else if audio_sent && chunks >= 3 {
+            } else if audio_sent && chunks >= 3 && !geofences_sent {
                 let stop = Command {
                     kind: Some(command::Kind::AudioControl(AudioControl {
                         enabled: false,
@@ -272,12 +273,33 @@ async fn main() {
                     vec![session.command(&id, stop, None, now()).unwrap()],
                 )
                 .await;
+                println!("audio ok, setting a geofence");
+                let zone = bastion_desktop_lib::model::GeofenceDef {
+                    id: "home".to_owned(),
+                    name: "Home".to_owned(),
+                    latitude: 48.8566,
+                    longitude: 2.3522,
+                    radius_m: 150.0,
+                };
+                run(
+                    &client,
+                    vec![session.set_geofences(&id, vec![zone], now()).unwrap()],
+                )
+                .await;
+                geofences_sent = true;
+            } else if geofences_sent
+                && d.commands
+                    .iter()
+                    .any(|c| c.kind == "geofences" && c.status == "completed")
+            {
                 println!(
-                    "E2E_OK photo={photos} frames={frames} chunks={chunks} (lock, photo, camera and audio all worked)"
+                    "E2E_OK photo={photos} frames={frames} chunks={chunks} geofences=ok (lock, photo, camera, audio and geofencing all worked)"
                 );
                 return;
             }
         }
     }
-    println!("E2E_TIMEOUT photos={photos} frames={frames} chunks={chunks}");
+    println!(
+        "E2E_TIMEOUT photos={photos} frames={frames} chunks={chunks} geofences_sent={geofences_sent}"
+    );
 }

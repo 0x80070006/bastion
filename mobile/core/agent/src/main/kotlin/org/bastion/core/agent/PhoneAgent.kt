@@ -88,6 +88,12 @@ public sealed interface AgentCommand {
         public val enabled: Boolean,
         public val durationSeconds: Int,
     ) : AgentCommand
+
+    /** Replaces the watched geofences (empty list disables geofencing). */
+    public class SetGeofences(
+        override val messageId: ByteArray,
+        public val zones: List<org.bastion.protocol.v1.Geofence>,
+    ) : AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -569,6 +575,8 @@ public class PhoneAgent(private val sodium: Sodium) {
                 command.audioControl.enabled,
                 clampDuration(command.audioControl.maxDurationSeconds),
             )
+
+            Command.KindCase.SET_GEOFENCES -> AgentCommand.SetGeofences(id, command.setGeofences.zonesList)
 
             else -> null
         }

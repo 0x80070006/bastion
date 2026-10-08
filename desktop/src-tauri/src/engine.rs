@@ -24,9 +24,9 @@ use zeroize::Zeroizing;
 
 use crate::error::{AppError, AppResult};
 use crate::model::{
-    DeviceRecord, HealthView, LocationPoint, MAX_COMMANDS, MAX_LOCATIONS, MAX_PHOTOS, PairingState,
-    PhotoMeta, RelaySettings, Secret, SeenId, SentCommand, Settings, StatusView, VaultData,
-    sanitize_label,
+    DeviceRecord, GeofenceDef, HealthView, LocationPoint, MAX_COMMANDS, MAX_LOCATIONS, MAX_PHOTOS,
+    PairingState, PhotoMeta, RelaySettings, Secret, SeenId, SentCommand, Settings, StatusView,
+    VaultData, sanitize_label,
 };
 use crate::vault::SealedPrivilegedKey;
 
@@ -141,6 +141,7 @@ pub fn command_kind(command: &Command) -> &'static str {
         Some(command::Kind::RequestStatus(_)) => "status",
         Some(command::Kind::StreamControl(_)) => "stream",
         Some(command::Kind::AudioControl(_)) => "audio",
+        Some(command::Kind::SetGeofences(_)) => "geofences",
         None => "unknown",
     }
 }
@@ -373,6 +374,7 @@ impl Session {
             status: None,
             commands: std::collections::VecDeque::new(),
             photos: std::collections::VecDeque::new(),
+            geofences: Vec::new(),
         };
         self.data
             .log(now_ms, Some(&record), "pairing.request", None);
@@ -933,6 +935,38 @@ impl Session {
             recipient,
             envelope,
         })
+    }
+
+    /// Replaces the geofences watched by a device and sends them to the phone.
+    ///
+    /// # Errors
+    /// [`AppError::UnknownDevice`], [`AppError::NotActive`].
+    pub fn set_geofences(
+        &mut self,
+        device_id: &[u8],
+        zones: Vec<GeofenceDef>,
+        now_ms: i64,
+    ) -> AppResult<Action> {
+        let proto = bastion_proto::v1::SetGeofences {
+            zones: zones
+                .iter()
+                .map(|z| bastion_proto::v1::Geofence {
+                    id: z.id.clone(),
+                    latitude: z.latitude,
+                    longitude: z.longitude,
+                    radius_m: z.radius_m,
+                    name: z.name.clone(),
+                })
+                .collect(),
+        };
+        let command = Command {
+            kind: Some(command::Kind::SetGeofences(proto)),
+        };
+        let action = self.command(device_id, command, None, now_ms)?;
+        if let Some(index) = self.data.device_index(device_id) {
+            self.data.devices[index].geofences = zones;
+        }
+        Ok(action)
     }
 
     /// Forgets a device locally and unlinks it on the relay (the phone is not told).
