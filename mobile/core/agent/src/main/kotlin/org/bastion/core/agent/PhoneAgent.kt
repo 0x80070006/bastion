@@ -108,6 +108,21 @@ public sealed interface AgentCommand {
     /** A single remote-input action to inject via the accessibility service (fire-and-forget). */
     public class Input(override val messageId: ByteArray, public val action: org.bastion.protocol.v1.RemoteInput) :
         AgentCommand
+
+    /** Start or stop the two-way voice intercom (mic → controller, speaker ← controller). */
+    public class Intercom(
+        override val messageId: ByteArray,
+        public val enabled: Boolean,
+        public val durationSeconds: Int,
+    ) : AgentCommand
+
+    /** One chunk of the controller's voice to play on the speaker (fire-and-forget). */
+    public class AudioPlay(
+        override val messageId: ByteArray,
+        public val sequence: Long,
+        public val pcm: ByteArray,
+        public val sampleRate: Int,
+    ) : AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -606,6 +621,19 @@ public class PhoneAgent(private val sodium: Sodium) {
             )
 
             Command.KindCase.REMOTE_INPUT -> AgentCommand.Input(id, command.remoteInput)
+
+            Command.KindCase.INTERCOM_CONTROL -> AgentCommand.Intercom(
+                id,
+                command.intercomControl.enabled,
+                clampScreenDuration(command.intercomControl.maxDurationSeconds),
+            )
+
+            Command.KindCase.AUDIO_PLAY -> AgentCommand.AudioPlay(
+                id,
+                command.audioPlay.sequence,
+                command.audioPlay.pcm.toByteArray(),
+                command.audioPlay.sampleRate,
+            )
 
             else -> null
         }

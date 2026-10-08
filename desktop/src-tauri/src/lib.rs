@@ -215,6 +215,7 @@ pub fn run() {
             commands::geofences,
             commands::set_geofences,
             commands::remote_input,
+            commands::audio_play,
             commands::arm_wipe,
             commands::disarm_wipe,
             commands::send_sensitive,

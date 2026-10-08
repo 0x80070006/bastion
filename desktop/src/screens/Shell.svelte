@@ -124,10 +124,18 @@
   }
 
   .wordmark {
+    font-family: var(--font-mono);
     font-size: var(--type-title-size);
     line-height: var(--type-title-line-height);
     font-weight: var(--type-title-weight);
-    letter-spacing: var(--type-title-tracking);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-text-primary);
+  }
+
+  .wordmark::before {
+    content: "▚ ";
+    color: var(--color-accent);
   }
 
   ul {
@@ -143,21 +151,29 @@
     width: 100%;
     display: flex;
     align-items: center;
-    min-height: 40px;
+    min-height: 38px;
     padding: 0 var(--space-sm);
     border: none;
-    border-radius: var(--radius-sm);
+    border-left: 2px solid transparent;
     background: transparent;
     color: var(--color-text-secondary);
-    font: inherit;
-    font-size: var(--type-label-size);
-    font-weight: var(--type-label-weight);
+    font-family: var(--font-mono);
+    font-size: var(--type-caption-size);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     cursor: pointer;
+    transition: color var(--motion-fast) var(--motion-easing);
+  }
+
+  nav li button:hover {
+    color: var(--color-text-primary);
   }
 
   nav li button[aria-current="page"] {
     color: var(--color-text-primary);
     background: var(--color-surface-raised);
+    border-left-color: var(--color-accent);
   }
 
   .bottom {
@@ -169,8 +185,20 @@
 
   .conn {
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xxs);
+    font-family: var(--font-mono);
     font-size: var(--type-caption-size);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--color-text-secondary);
+  }
+
+  .conn::before {
+    content: "●";
+    font-size: 0.7em;
+    color: currentcolor;
   }
 
   .conn.online {

@@ -162,6 +162,8 @@ pub fn command_kind(command: &Command) -> &'static str {
         Some(command::Kind::SetGeofences(_)) => "geofences",
         Some(command::Kind::ScreenControl(_)) => "screen",
         Some(command::Kind::RemoteInput(_)) => "input",
+        Some(command::Kind::IntercomControl(_)) => "intercom",
+        Some(command::Kind::AudioPlay(_)) => "audioPlay",
         None => "unknown",
     }
 }
@@ -879,6 +881,32 @@ impl Session {
         if !matches!(command.kind, Some(command::Kind::RemoteInput(_))) {
             return Err(AppError::InvalidInput);
         }
+        self.fire_and_forget(device_id, command, now_ms)
+    }
+
+    /// Sends a fire-and-forget voice chunk (controller→phone intercom audio) to an active device.
+    /// Like [`input`], it is untracked and short-lived so a late chunk is dropped, not played late.
+    ///
+    /// # Errors
+    /// [`AppError::UnknownDevice`], [`AppError::NotActive`], [`AppError::InvalidInput`].
+    pub fn audio_play(
+        &mut self,
+        device_id: &[u8],
+        command: Command,
+        now_ms: i64,
+    ) -> AppResult<Action> {
+        if !matches!(command.kind, Some(command::Kind::AudioPlay(_))) {
+            return Err(AppError::InvalidInput);
+        }
+        self.fire_and_forget(device_id, command, now_ms)
+    }
+
+    fn fire_and_forget(
+        &mut self,
+        device_id: &[u8],
+        command: Command,
+        now_ms: i64,
+    ) -> AppResult<Action> {
         let index = self
             .data
             .device_index(device_id)

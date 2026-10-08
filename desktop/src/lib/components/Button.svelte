@@ -26,16 +26,17 @@
 
 <style>
   button {
-    min-height: 40px;
+    min-height: 36px;
     padding: 0 var(--space-md);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     border: var(--border-width) solid var(--color-border-active);
     background: var(--color-surface-raised);
     color: var(--color-text-primary);
-    font: inherit;
-    font-size: var(--type-label-size);
-    font-weight: var(--type-label-weight);
-    letter-spacing: var(--type-label-tracking);
+    font-family: var(--font-mono);
+    font-size: var(--type-caption-size);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     cursor: pointer;
     white-space: nowrap;
     transition:

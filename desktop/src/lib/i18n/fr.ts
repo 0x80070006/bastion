@@ -125,6 +125,10 @@ export const fr = {
   "camera.listenStart": "Écouter le micro",
   "camera.listenStop": "Couper le micro",
   "camera.listening": "Micro en direct",
+  "camera.talkStart": "Parler (interphone)",
+  "camera.talkStop": "Fin de l'interphone",
+  "camera.talking": "Interphone actif — la personne vous entend",
+  "camera.micDenied": "L'accès au microphone a été refusé sur cet ordinateur.",
 
   "remote.title": "Contrôle à distance",
   "remote.start": "Prendre le contrôle",
@@ -147,6 +151,8 @@ export const fr = {
   "remote.lock": "Verrouiller",
   "remote.unsupported":
     "Cet appareil ne peut pas recopier son écran (Android 11+ et le service d'accessibilité Bastion requis).",
+  "remote.stalled":
+    "Aucun écran pour l'instant. Sur le téléphone : installez Bastion 0.3.0+, activez Réglages → Accessibilité → « Contrôle à distance Bastion », puis réveillez/déverrouillez-le.",
 
   "command.ring": "Sonnerie",
   "command.stopRing": "Arrêt sonnerie",
@@ -159,6 +165,7 @@ export const fr = {
   "command.audio": "Micro en direct",
   "command.screen": "Contrôle à distance",
   "command.input": "Saisie à distance",
+  "command.intercom": "Interphone",
   "command.wipe": "Effacement",
   "command.unpair": "Désappairage",
   "command.status": "État",

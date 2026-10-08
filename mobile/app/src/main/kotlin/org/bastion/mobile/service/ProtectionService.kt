@@ -69,6 +69,8 @@ class ProtectionService : Service() {
     private var streamJob: Job? = null
     private var audioJob: Job? = null
     private var screenJob: Job? = null
+    private var intercomJob: Job? = null
+    private var playback: AudioPlayback? = null
     private var lastTrackedFixMs = 0L
     private var appliedTracking = -1
 
@@ -141,6 +143,9 @@ class ProtectionService : Service() {
         streamJob?.cancel()
         audioJob?.cancel()
         screenJob?.cancel()
+        intercomJob?.cancel()
+        playback?.release()
+        playback = null
         RemoteInputService.instance?.setKeepAwake(false)
         scope.cancel()
         super.onDestroy()
@@ -272,8 +277,8 @@ class ProtectionService : Service() {
     @Suppress("CyclomaticComplexMethod")
     private suspend fun execute(command: AgentCommand) {
         val id = command.messageId
-        // Remote input fires several times a second; journaling each tap would be noise.
-        if (command !is AgentCommand.Input) {
+        // Remote input and voice chunks fire several times a second; journaling each would be noise.
+        if (command !is AgentCommand.Input && command !is AgentCommand.AudioPlay) {
             repository.log("command.${command.javaClass.simpleName.lowercase()}")
         }
         when (command) {
@@ -327,6 +332,53 @@ class ProtectionService : Service() {
             is AgentCommand.Screen -> screen(command)
 
             is AgentCommand.Input -> input(command)
+
+            is AgentCommand.Intercom -> intercom(command)
+
+            is AgentCommand.AudioPlay -> playback?.play(command.pcm, command.sampleRate)
+        }
+    }
+
+    /** Two-way voice: streams the mic to the controller and opens the speaker for their voice. */
+    @Suppress("LoopWithTooManyJumpStatements")
+    private fun intercom(command: AgentCommand.Intercom) {
+        intercomJob?.cancel()
+        if (!command.enabled) {
+            playback?.release()
+            playback = null
+            goForeground()
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_COMPLETED) }
+            return
+        }
+        val capture = AudioCapture(this)
+        if (!capture.hasPermission()) {
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_FAILED, "mic_permission_denied") }
+            return
+        }
+        goForeground(mic = true)
+        playback = AudioPlayback()
+        intercomJob = scope.launch {
+            repository.sendResult(command.messageId, Status.STATUS_ACCEPTED)
+            if (!capture.start()) {
+                playback?.release()
+                playback = null
+                goForeground()
+                repository.sendResult(command.messageId, Status.STATUS_FAILED, "mic_unavailable")
+                return@launch
+            }
+            val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
+            var sequence = 0L
+            try {
+                while (isActive && System.currentTimeMillis() < endAt) {
+                    val chunk = capture.read() ?: break
+                    if (!sendAudio(sequence++, chunk)) break
+                }
+            } finally {
+                capture.stop()
+                playback?.release()
+                playback = null
+                goForeground()
+            }
         }
     }
 

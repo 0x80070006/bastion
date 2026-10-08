@@ -29,6 +29,10 @@ message Command {
     // or Device Owner provisioning). Never bypasses the lock screen.
     ScreenControl screen_control = 14;
     RemoteInput remote_input = 15;
+    // Two-way voice intercom: the phone streams its microphone (AudioChunk events) and plays the
+    // controller's voice (AudioPlay commands) through its speaker. The OS mic indicator stays on.
+    IntercomControl intercom_control = 16;
+    AudioPlay audio_play = 17;
   }
 }
 
@@ -192,6 +196,26 @@ enum GlobalAction {
   GLOBAL_ACTION_WAKE = 6;
   // Lock the screen (accessibility lock; API 28+).
   GLOBAL_ACTION_LOCK = 7;
+}
+
+// Starts or stops a two-way voice intercom. While enabled the phone captures its microphone and
+// emits AudioChunk events (phone→controller) and opens its speaker for AudioPlay chunks
+// (controller→phone). The OS microphone indicator is always visible; the phone enforces a maximum
+// duration. Recording/among another person may be legally restricted (shown before start).
+message IntercomControl {
+  bool enabled = 1;
+  // Hard stop after this many seconds, clamped by the phone to 1..900 (0 = phone default).
+  uint32 max_duration_seconds = 2;
+}
+
+// One chunk of the controller's voice to play on the phone's speaker during an intercom session.
+// Signed 16-bit little-endian PCM, single channel, at `sample_rate` Hz. Fire-and-forget: late or
+// out-of-order chunks are dropped by the phone.
+message AudioPlay {
+  uint64 sequence = 1;
+  // 16-bit mono PCM, max 384 KiB.
+  bytes pcm = 2;
+  uint32 sample_rate = 3;
 }
 
 message Wipe {

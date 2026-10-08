@@ -29,9 +29,12 @@
   let frameW = $state(0);
   let frameH = $state(0);
   let locked = $state(false);
+  let stalled = $state(false);
   let busy = $state(false);
   let feedback = $state("");
   let typed = $state("");
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  const STALL_MS = 6000;
   let img: HTMLImageElement | undefined = $state();
   let down: { x: number; y: number; at: number } | null = null;
   const cleanups: (() => void)[] = [];
@@ -42,11 +45,14 @@
       frameW = frame.width;
       frameH = frame.height;
       locked = frame.locked;
+      stalled = false;
+      clearTimeout(stallTimer);
     }
   }).then((fn) => cleanups.push(fn));
 
   onDestroy(() => {
     cleanups.forEach((fn) => fn());
+    clearTimeout(stallTimer);
     if (controlling) void api.sendCommand(deviceId, screenRequest(false)).catch(() => undefined);
   });
 
@@ -76,12 +82,21 @@
   async function toggleControl() {
     if (controlling) {
       controlling = false;
+      stalled = false;
+      clearTimeout(stallTimer);
       frameUrl = "";
       await run(() => api.sendCommand(deviceId, screenRequest(false)));
       return;
     }
     await run(() => api.sendCommand(deviceId, screenRequest(true)));
     controlling = true;
+    stalled = false;
+    // If no frame arrives soon, the phone is likely on an old build, the accessibility service is
+    // off, or it is locked — tell the operator instead of showing an empty panel.
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      if (controlling && !frameUrl) stalled = true;
+    }, STALL_MS);
   }
 
   function send(input: RemoteInputRequest) {
@@ -168,6 +183,8 @@
         />
         {#if locked}<div class="lockedOverlay">{t("remote.locked")}</div>{/if}
         <span class="badge">● {t("remote.live", { fps: SCREEN_FPS })}</span>
+      {:else if stalled}
+        <p class="placeholder stalled">{t("remote.stalled")}</p>
       {:else}
         <p class="placeholder">{t("remote.connecting")}</p>
       {/if}
@@ -280,8 +297,14 @@
 
   .placeholder {
     margin: 0;
+    padding: var(--space-lg);
+    text-align: center;
     color: var(--color-text-secondary);
     font-size: var(--type-label-size);
+  }
+
+  .stalled {
+    color: var(--color-warning);
   }
 
   .hint {

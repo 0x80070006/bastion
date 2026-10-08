@@ -129,7 +129,8 @@ export type CommandRequest =
       edgePx: number;
       durationSeconds: number;
       keepAwake: boolean;
-    };
+    }
+  | { kind: "intercom"; enabled: boolean; durationSeconds: number };
 
 export type GlobalInputAction =
   "back" | "home" | "recents" | "notifications" | "quickSettings" | "wake" | "lock";
@@ -260,6 +261,8 @@ export const api = {
   forgetDevice: (id: string, password: string) => invoke<null>("forget_device", { id, password }),
   remoteInput: (id: string, input: RemoteInputRequest) =>
     invoke<null>("remote_input", { id, input }),
+  audioPlay: (id: string, sequence: number, pcm: string, sampleRate: number) =>
+    invoke<null>("audio_play", { id, sequence, pcm, sampleRate }),
   settings: () => invoke<SettingsView>("settings"),
   updateSettings: (update: {
     autoLockMinutes: number;

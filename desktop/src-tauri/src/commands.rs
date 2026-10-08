@@ -362,6 +362,14 @@ pub enum CommandRequest {
         /// Keep the display awake while mirroring.
         keep_awake: bool,
     },
+    /// Start or stop the two-way voice intercom.
+    #[serde(rename_all = "camelCase")]
+    Intercom {
+        /// Whether to start (true) or stop (false) the intercom.
+        enabled: bool,
+        /// Hard stop after this many seconds.
+        duration_seconds: u32,
+    },
 }
 
 fn camera_value(name: &str) -> i32 {
@@ -444,6 +452,13 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
             max_edge_px: (*edge_px).clamp(240, 1600),
             max_duration_seconds: (*duration_seconds).clamp(1, 900),
             keep_awake: *keep_awake,
+        }),
+        CommandRequest::Intercom {
+            enabled,
+            duration_seconds,
+        } => command::Kind::IntercomControl(bastion_proto::v1::IntercomControl {
+            enabled: *enabled,
+            max_duration_seconds: (*duration_seconds).clamp(1, 900),
         }),
     };
     Ok(Command { kind: Some(kind) })
@@ -574,6 +589,35 @@ pub async fn remote_input(core: Core<'_>, id: String, input: RemoteInputRequest)
     let device_id = parse_device_id(&id)?;
     let command = build_input(&input)?;
     core.mutate(|s| Ok(((), vec![s.input(&device_id, command, now_ms())?])))
+        .await
+}
+
+/// Sends one chunk of the controller's voice to play on the phone (intercom; fire-and-forget).
+/// `pcm` is base64 16-bit mono PCM.
+#[tauri::command]
+pub async fn audio_play(
+    core: Core<'_>,
+    id: String,
+    sequence: u64,
+    pcm: String,
+    sample_rate: u32,
+) -> AppResult<()> {
+    let device_id = parse_device_id(&id)?;
+    let bytes = STANDARD.decode(&pcm).map_err(|_| AppError::InvalidInput)?;
+    if bytes.is_empty()
+        || bytes.len() > bastion_proto::MAX_BYTES_FIELD
+        || !(8_000..=48_000).contains(&sample_rate)
+    {
+        return Err(AppError::InvalidInput);
+    }
+    let command = Command {
+        kind: Some(command::Kind::AudioPlay(bastion_proto::v1::AudioPlay {
+            sequence,
+            pcm: bytes,
+            sample_rate,
+        })),
+    };
+    core.mutate(|s| Ok(((), vec![s.audio_play(&device_id, command, now_ms())?])))
         .await
 }
 

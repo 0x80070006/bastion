@@ -24,9 +24,19 @@
   let streaming = $state(false);
   let frameUrl = $state("");
   let listening = $state(false);
+  let talking = $state(false);
   let busy = $state(false);
   let feedback = $state("");
   const cleanups: (() => void)[] = [];
+
+  // Microphone capture (controller voice → phone) for the two-way intercom.
+  let micCtx: AudioContext | undefined;
+  let micStream: MediaStream | undefined;
+  let micNode: ScriptProcessorNode | undefined;
+  let micSource: MediaStreamAudioSourceNode | undefined;
+  let outSeq = 0;
+
+  const INTERCOM_SECONDS = 900;
 
   // Web Audio playback of incoming PCM chunks, scheduled back to back.
   let audioCtx: AudioContext | undefined;
@@ -60,15 +70,87 @@
   }).then((fn) => cleanups.push(fn));
 
   onAudio((chunk) => {
-    if (chunk.deviceId === deviceId && listening) playChunk(chunk.pcm, chunk.sampleRate);
+    // Play the phone's microphone while listening or during a two-way intercom.
+    if (chunk.deviceId === deviceId && (listening || talking))
+      playChunk(chunk.pcm, chunk.sampleRate);
   }).then((fn) => cleanups.push(fn));
 
   onDestroy(() => {
     cleanups.forEach((fn) => fn());
     void audioCtx?.close();
+    stopMic();
     if (streaming) void api.sendCommand(deviceId, stopRequest()).catch(() => undefined);
     if (listening) void api.sendCommand(deviceId, audioRequest(false)).catch(() => undefined);
+    if (talking) void api.sendCommand(deviceId, intercomRequest(false)).catch(() => undefined);
   });
+
+  function intercomRequest(enabled: boolean) {
+    return { kind: "intercom", enabled, durationSeconds: INTERCOM_SECONDS } as const;
+  }
+
+  function encodePcm(samples: Float32Array): string {
+    const pcm = new Int16Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i] ?? 0));
+      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    const bytes = new Uint8Array(pcm.buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i] ?? 0);
+    return btoa(binary);
+  }
+
+  async function startMic(): Promise<boolean> {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+    } catch {
+      return false;
+    }
+    micCtx = new AudioContext();
+    micSource = micCtx.createMediaStreamSource(micStream);
+    micNode = micCtx.createScriptProcessor(4096, 1, 1);
+    const rate = micCtx.sampleRate;
+    micNode.onaudioprocess = (event) => {
+      if (!talking) return;
+      const input = event.inputBuffer.getChannelData(0);
+      void api.audioPlay(deviceId, outSeq++, encodePcm(input), rate).catch(() => undefined);
+    };
+    micSource.connect(micNode);
+    micNode.connect(micCtx.destination);
+    return true;
+  }
+
+  function stopMic() {
+    micNode?.disconnect();
+    micSource?.disconnect();
+    micStream?.getTracks().forEach((t) => t.stop());
+    void micCtx?.close();
+    micNode = undefined;
+    micSource = undefined;
+    micStream = undefined;
+    micCtx = undefined;
+  }
+
+  async function toggleIntercom() {
+    if (talking) {
+      talking = false;
+      stopMic();
+      nextPlayTime = 0;
+      await run(() => api.sendCommand(deviceId, intercomRequest(false)));
+      return;
+    }
+    await (audioCtx ?? (audioCtx = new AudioContext())).resume().catch(() => undefined);
+    if (!(await startMic())) {
+      feedback = t("camera.micDenied");
+      return;
+    }
+    nextPlayTime = 0;
+    outSeq = 0;
+    await run(() => api.sendCommand(deviceId, intercomRequest(true)));
+    talking = true;
+  }
 
   function audioRequest(enabled: boolean) {
     return { kind: "audio", enabled, durationSeconds: STREAM_SECONDS } as const;
@@ -191,8 +273,17 @@
         {t("camera.listenStop")}
       </Button>
     {:else}
-      <Button disabled={!active || busy} onclick={toggleListen}>
+      <Button disabled={!active || busy || talking} onclick={toggleListen}>
         {t("camera.listenStart")}
+      </Button>
+    {/if}
+    {#if talking}
+      <Button variant="danger" disabled={busy} onclick={toggleIntercom}>
+        {t("camera.talkStop")}
+      </Button>
+    {:else}
+      <Button disabled={!active || busy || listening} onclick={toggleIntercom}>
+        {t("camera.talkStart")}
       </Button>
     {/if}
   </div>
@@ -210,6 +301,9 @@
   {/if}
   {#if listening}
     <p class="listening" aria-live="polite">● {t("camera.listening")}</p>
+  {/if}
+  {#if talking}
+    <p class="listening" aria-live="polite">● {t("camera.talking")}</p>
   {/if}
 
   <h3>{t("camera.photos")}</h3>

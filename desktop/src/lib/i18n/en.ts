@@ -124,6 +124,10 @@ export const en: Messages = {
   "camera.listenStart": "Listen to the mic",
   "camera.listenStop": "Mute the mic",
   "camera.listening": "Mic live",
+  "camera.talkStart": "Talk (intercom)",
+  "camera.talkStop": "End intercom",
+  "camera.talking": "Intercom live — they can hear you",
+  "camera.micDenied": "Microphone access was refused on this computer.",
 
   "remote.title": "Remote control",
   "remote.start": "Take control",
@@ -145,6 +149,8 @@ export const en: Messages = {
   "remote.lock": "Lock",
   "remote.unsupported":
     "This device cannot mirror its screen (needs Android 11+ and the Bastion accessibility service enabled).",
+  "remote.stalled":
+    "No screen yet. On the phone: install Bastion 0.3.0+, turn on Settings → Accessibility → “Bastion remote control”, then wake/unlock it.",
 
   "command.ring": "Ring",
   "command.stopRing": "Stop ring",
@@ -157,6 +163,7 @@ export const en: Messages = {
   "command.audio": "Live mic",
   "command.screen": "Remote control",
   "command.input": "Remote input",
+  "command.intercom": "Intercom",
   "command.wipe": "Wipe",
   "command.unpair": "Unpair",
   "command.status": "Status",
