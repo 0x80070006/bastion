@@ -91,6 +91,17 @@ pub enum Media {
         /// JPEG bytes.
         jpeg: Vec<u8>,
     },
+    /// A live audio chunk to play, never persisted.
+    Audio {
+        /// Device that sent it.
+        device_id: Vec<u8>,
+        /// Sequence within the audio session.
+        sequence: u64,
+        /// 16-bit mono PCM.
+        pcm: Vec<u8>,
+        /// Sample rate in Hz.
+        sample_rate: u32,
+    },
 }
 
 struct PendingInvite {
@@ -129,6 +140,7 @@ pub fn command_kind(command: &Command) -> &'static str {
         Some(command::Kind::Unpair(_)) => "unpair",
         Some(command::Kind::RequestStatus(_)) => "status",
         Some(command::Kind::StreamControl(_)) => "stream",
+        Some(command::Kind::AudioControl(_)) => "audio",
         None => "unknown",
     }
 }
@@ -643,6 +655,20 @@ impl Session {
                         device_id: self.data.devices[index].device_id.clone(),
                         sequence: frame.sequence,
                         jpeg: frame.jpeg,
+                    });
+                }
+                return notices;
+            }
+            Some(event::Kind::AudioChunk(chunk)) => {
+                if !chunk.pcm.is_empty()
+                    && chunk.pcm.len() <= bastion_proto::MAX_BYTES_FIELD
+                    && (8_000..=48_000).contains(&chunk.sample_rate)
+                {
+                    self.media.push(Media::Audio {
+                        device_id: self.data.devices[index].device_id.clone(),
+                        sequence: chunk.sequence,
+                        pcm: chunk.pcm,
+                        sample_rate: chunk.sample_rate,
                     });
                 }
                 return notices;

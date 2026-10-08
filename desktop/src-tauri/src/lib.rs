@@ -62,6 +62,22 @@ fn frame_sink(app: AppHandle) -> crate::core::FrameSink {
     })
 }
 
+/// Pushes a live audio chunk to the webview as base64 PCM.
+fn audio_sink(app: AppHandle) -> crate::core::AudioSink {
+    use base64::Engine;
+    Arc::new(
+        move |device_id: &[u8], sequence: u64, pcm: &[u8], sample_rate: u32| {
+            let payload = serde_json::json!({
+                "deviceId": hex::encode(device_id),
+                "sequence": sequence,
+                "pcm": base64::engine::general_purpose::STANDARD.encode(pcm),
+                "sampleRate": sample_rate,
+            });
+            let _ = app.emit("bastion://audio", payload);
+        },
+    )
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Ouvrir / Open", true, None::<&str>)?;
     let lock = MenuItem::with_id(app, "lock", "Verrouiller / Lock", true, None::<&str>)?;
@@ -122,6 +138,7 @@ pub fn run() {
                 Paths::new(&data, &cache),
                 emitter(app.handle().clone()),
                 frame_sink(app.handle().clone()),
+                audio_sink(app.handle().clone()),
             );
             app.manage(Arc::clone(&core));
             tauri::async_runtime::spawn(async move {

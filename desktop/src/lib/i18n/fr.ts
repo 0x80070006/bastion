@@ -114,6 +114,9 @@ export const fr = {
   "camera.trigger.failedUnlock": "après échecs de déverrouillage",
   "camera.open": "Ouvrir",
   "camera.close": "Fermer",
+  "camera.listenStart": "Écouter le micro",
+  "camera.listenStop": "Couper le micro",
+  "camera.listening": "Micro en direct",
 
   "command.ring": "Sonnerie",
   "command.stopRing": "Arrêt sonnerie",
@@ -123,6 +126,7 @@ export const fr = {
   "command.lock": "Verrouillage",
   "command.capturePhoto": "Photo",
   "command.stream": "Caméra en direct",
+  "command.audio": "Micro en direct",
   "command.wipe": "Effacement",
   "command.unpair": "Désappairage",
   "command.status": "État",

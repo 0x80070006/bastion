@@ -23,6 +23,7 @@ message Command {
     Unpair unpair = 9;
     RequestStatus request_status = 10;
     StreamControl stream_control = 11;
+    AudioControl audio_control = 12;
   }
 }
 
@@ -96,6 +97,14 @@ message StreamControl {
   uint32 max_edge_px = 4;
   // Hard stop after this many seconds, clamped by the phone to 1..300 (0 = phone default).
   uint32 max_duration_seconds = 5;
+}
+
+// Near-live microphone stream over the end-to-end channel. The OS microphone indicator is
+// always visible; recording another person may be legally restricted (shown before start).
+message AudioControl {
+  bool enabled = 1;
+  // Hard stop after this many seconds, clamped by the phone to 1..300 (0 = phone default).
+  uint32 max_duration_seconds = 2;
 }
 
 message Wipe {

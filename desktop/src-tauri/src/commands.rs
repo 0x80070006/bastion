@@ -340,6 +340,14 @@ pub enum CommandRequest {
         /// Hard stop after this many seconds.
         duration_seconds: u32,
     },
+    /// Start or stop a near-live microphone stream.
+    #[serde(rename_all = "camelCase")]
+    Audio {
+        /// Whether to start (true) or stop (false) the audio stream.
+        enabled: bool,
+        /// Hard stop after this many seconds.
+        duration_seconds: u32,
+    },
 }
 
 fn camera_value(name: &str) -> i32 {
@@ -401,6 +409,13 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
             camera: camera_value(camera),
             max_fps: (*fps).clamp(1, 10),
             max_edge_px: (*edge_px).clamp(240, 1280),
+            max_duration_seconds: (*duration_seconds).clamp(1, 300),
+        }),
+        CommandRequest::Audio {
+            enabled,
+            duration_seconds,
+        } => command::Kind::AudioControl(bastion_proto::v1::AudioControl {
+            enabled: *enabled,
             max_duration_seconds: (*duration_seconds).clamp(1, 300),
         }),
     };

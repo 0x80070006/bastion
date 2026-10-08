@@ -21,8 +21,8 @@ use bastion_desktop_lib::engine::{Action, Media, Session};
 use bastion_desktop_lib::model::{PairingState, RelaySettings};
 use bastion_desktop_lib::relay_client::RelayClient;
 use bastion_proto::v1::{
-    CapturePhoto, Command, LocateNow, RequestStatus, Ring, StopRing, StreamControl, capture_photo,
-    command,
+    AudioControl, CapturePhoto, Command, LocateNow, RequestStatus, Ring, StopRing, StreamControl,
+    capture_photo, command,
 };
 use bastion_relay::{Config, Relay};
 
@@ -83,8 +83,10 @@ async fn main() {
     let mut lock_done = false;
     let mut photo_sent = false;
     let mut stream_sent = false;
+    let mut audio_sent = false;
     let mut photos = 0usize;
     let mut frames = 0usize;
+    let mut chunks = 0usize;
     let mut seen_journal = 0;
     let deadline = std::time::Instant::now() + Duration::from_secs(900);
     while std::time::Instant::now() < deadline {
@@ -103,6 +105,15 @@ async fn main() {
                     Media::Frame { sequence, jpeg, .. } => {
                         frames += 1;
                         println!("FRAME seq={sequence} {} bytes", jpeg.len());
+                    }
+                    Media::Audio {
+                        sequence,
+                        pcm,
+                        sample_rate,
+                        ..
+                    } => {
+                        chunks += 1;
+                        println!("AUDIO seq={sequence} {} bytes @{sample_rate}Hz", pcm.len());
                     }
                 }
             }
@@ -226,9 +237,32 @@ async fn main() {
                 )
                 .await;
                 stream_sent = true;
-            } else if stream_sent && frames >= 3 {
+            } else if stream_sent && frames >= 3 && !audio_sent {
                 let stop = Command {
                     kind: Some(command::Kind::StreamControl(StreamControl {
+                        enabled: false,
+                        ..Default::default()
+                    })),
+                };
+                let listen = Command {
+                    kind: Some(command::Kind::AudioControl(AudioControl {
+                        enabled: true,
+                        max_duration_seconds: 6,
+                    })),
+                };
+                println!("stream ok, starting a 6 s audio stream");
+                run(
+                    &client,
+                    vec![
+                        session.command(&id, stop, None, now()).unwrap(),
+                        session.command(&id, listen, None, now()).unwrap(),
+                    ],
+                )
+                .await;
+                audio_sent = true;
+            } else if audio_sent && chunks >= 3 {
+                let stop = Command {
+                    kind: Some(command::Kind::AudioControl(AudioControl {
                         enabled: false,
                         ..Default::default()
                     })),
@@ -239,11 +273,11 @@ async fn main() {
                 )
                 .await;
                 println!(
-                    "E2E_OK photo={photos} frames={frames} (lock, photo and stream all worked)"
+                    "E2E_OK photo={photos} frames={frames} chunks={chunks} (lock, photo, camera and audio all worked)"
                 );
                 return;
             }
         }
     }
-    println!("E2E_TIMEOUT photos={photos} frames={frames}");
+    println!("E2E_TIMEOUT photos={photos} frames={frames} chunks={chunks}");
 }

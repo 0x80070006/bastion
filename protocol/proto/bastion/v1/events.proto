@@ -17,6 +17,7 @@ message Event {
     PhotoReport photo = 4;
     LastChanceBeacon last_chance = 5;
     MediaFrame media_frame = 6;
+    AudioChunk audio_chunk = 7;
   }
 }
 
@@ -139,6 +140,17 @@ message MediaFrame {
   bytes jpeg = 4;
   uint32 width = 5;
   uint32 height = 6;
+}
+
+// One chunk of a near-live microphone stream (AudioControl). Signed 16-bit little-endian PCM,
+// single channel, at `sample_rate` Hz.
+message AudioChunk {
+  // Strictly increasing within one audio session.
+  uint64 sequence = 1;
+  int64 captured_at_ms = 2;
+  // 16-bit mono PCM, max 384 KiB.
+  bytes pcm = 3;
+  uint32 sample_rate = 4;
 }
 
 message LastChanceBeacon {

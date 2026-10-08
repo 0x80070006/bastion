@@ -33,6 +33,7 @@ import org.bastion.mobile.data.AgentRepository
 import org.bastion.mobile.data.RelayException
 import org.bastion.mobile.ui.LostModeActivity
 import org.bastion.protocol.v1.Alert
+import org.bastion.protocol.v1.AudioChunk
 import org.bastion.protocol.v1.CapturePhoto
 import org.bastion.protocol.v1.CommandResult.Status
 import org.bastion.protocol.v1.Event
@@ -62,6 +63,7 @@ class ProtectionService : Service() {
     private var loop: Job? = null
     private var periodic: Job? = null
     private var streamJob: Job? = null
+    private var audioJob: Job? = null
     private var lastTrackedFixMs = 0L
     private var appliedTracking = -1
 
@@ -132,11 +134,12 @@ class ProtectionService : Service() {
         alarm.stop()
         locator.stopTracking()
         streamJob?.cancel()
+        audioJob?.cancel()
         scope.cancel()
         super.onDestroy()
     }
 
-    private fun goForeground(camera: Boolean = false) {
+    private fun goForeground(camera: Boolean = false, mic: Boolean = false) {
         val active = agent.isActive(repository.state.value)
         val notification = Notifications.protection(this, active)
         var type = when {
@@ -147,9 +150,12 @@ class ProtectionService : Service() {
 
             else -> 0
         }
-        // The camera type is required to use the camera from the background on Android 11+.
+        // The camera/microphone types are required to use them from the background on Android 11+.
         if (camera && device.hasCamera() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        }
+        if (mic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
         try {
             ServiceCompat.startForeground(this, Notifications.ID_PROTECTION, notification, type)
@@ -303,7 +309,54 @@ class ProtectionService : Service() {
                 capturePhoto(id, command.camera, PhotoReport.Trigger.TRIGGER_ON_DEMAND)
 
             is AgentCommand.Stream -> stream(command)
+
+            is AgentCommand.Audio -> audio(command)
         }
+    }
+
+    @Suppress("LoopWithTooManyJumpStatements")
+    private fun audio(command: AgentCommand.Audio) {
+        audioJob?.cancel()
+        if (!command.enabled) {
+            goForeground()
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_COMPLETED) }
+            return
+        }
+        val capture = AudioCapture(this)
+        if (!capture.hasPermission()) {
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_FAILED, "mic_permission_denied") }
+            return
+        }
+        goForeground(mic = true)
+        audioJob = scope.launch {
+            repository.sendResult(command.messageId, Status.STATUS_ACCEPTED)
+            if (!capture.start()) {
+                goForeground()
+                repository.sendResult(command.messageId, Status.STATUS_FAILED, "mic_unavailable")
+                return@launch
+            }
+            val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
+            var sequence = 0L
+            try {
+                while (isActive && System.currentTimeMillis() < endAt) {
+                    val chunk = capture.read() ?: break
+                    if (!sendAudio(sequence++, chunk)) break
+                }
+            } finally {
+                capture.stop()
+                goForeground()
+            }
+        }
+    }
+
+    private suspend fun sendAudio(sequence: Long, chunk: AudioChunkData): Boolean {
+        val audio = AudioChunk.newBuilder()
+            .setSequence(sequence)
+            .setCapturedAtMs(System.currentTimeMillis())
+            .setPcm(com.google.protobuf.ByteString.copyFrom(chunk.pcm))
+            .setSampleRate(chunk.sampleRate)
+            .build()
+        return repository.sendEvent(Event.newBuilder().setAudioChunk(audio).build())
     }
 
     /** Captures and sends one photo. `commandId` is null for an automatic intrusion photo. */

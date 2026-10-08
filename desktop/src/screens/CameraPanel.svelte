@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import Button from "../lib/components/Button.svelte";
-  import { api, errorCode, onFrame, type CameraChoice, type PhotoView } from "../lib/api";
+  import { api, errorCode, onAudio, onFrame, type CameraChoice, type PhotoView } from "../lib/api";
   import { dateTime } from "../lib/format";
   import { locale, t, type MessageKey } from "../lib/i18n";
 
@@ -23,21 +23,70 @@
   let openedUrl = $state("");
   let streaming = $state(false);
   let frameUrl = $state("");
+  let listening = $state(false);
   let busy = $state(false);
   let feedback = $state("");
-  let unlisten: (() => void) | undefined;
+  const cleanups: (() => void)[] = [];
+
+  // Web Audio playback of incoming PCM chunks, scheduled back to back.
+  let audioCtx: AudioContext | undefined;
+  let nextPlayTime = 0;
+
+  function playChunk(base64: string, sampleRate: number) {
+    const ctx = audioCtx ?? (audioCtx = new AudioContext());
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const samples = new Int16Array(
+      bytes.buffer,
+      bytes.byteOffset,
+      Math.floor(bytes.byteLength / 2),
+    );
+    if (samples.length === 0) return;
+    const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) channel[i] = (samples[i] ?? 0) / 0x8000;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    const start = Math.max(nextPlayTime, ctx.currentTime);
+    source.start(start);
+    nextPlayTime = start + buffer.duration;
+  }
 
   onFrame((frame) => {
     // Ignore frames for other devices or frames arriving after we stopped.
     if (frame.deviceId === deviceId && streaming) {
       frameUrl = `data:image/jpeg;base64,${frame.jpeg}`;
     }
-  }).then((fn) => (unlisten = fn));
+  }).then((fn) => cleanups.push(fn));
+
+  onAudio((chunk) => {
+    if (chunk.deviceId === deviceId && listening) playChunk(chunk.pcm, chunk.sampleRate);
+  }).then((fn) => cleanups.push(fn));
 
   onDestroy(() => {
-    unlisten?.();
+    cleanups.forEach((fn) => fn());
+    void audioCtx?.close();
     if (streaming) void api.sendCommand(deviceId, stopRequest()).catch(() => undefined);
+    if (listening) void api.sendCommand(deviceId, audioRequest(false)).catch(() => undefined);
   });
+
+  function audioRequest(enabled: boolean) {
+    return { kind: "audio", enabled, durationSeconds: STREAM_SECONDS } as const;
+  }
+
+  async function toggleListen() {
+    if (listening) {
+      listening = false;
+      nextPlayTime = 0;
+      await run(() => api.sendCommand(deviceId, audioRequest(false)));
+      return;
+    }
+    // Resume the audio context on a user gesture (autoplay policy).
+    await (audioCtx ?? (audioCtx = new AudioContext())).resume().catch(() => undefined);
+    nextPlayTime = 0;
+    await run(() => api.sendCommand(deviceId, audioRequest(true)));
+    listening = true;
+  }
 
   function stopRequest() {
     return {
@@ -137,6 +186,15 @@
         {t("camera.streamStart", { camera: t("camera.back") })}
       </Button>
     {/if}
+    {#if listening}
+      <Button variant="danger" disabled={busy} onclick={toggleListen}>
+        {t("camera.listenStop")}
+      </Button>
+    {:else}
+      <Button disabled={!active || busy} onclick={toggleListen}>
+        {t("camera.listenStart")}
+      </Button>
+    {/if}
   </div>
   {#if feedback}<p class="error" role="status">{feedback}</p>{/if}
 
@@ -149,6 +207,9 @@
         <p class="placeholder">{t("camera.connecting")}</p>
       {/if}
     </div>
+  {/if}
+  {#if listening}
+    <p class="listening" aria-live="polite">● {t("camera.listening")}</p>
   {/if}
 
   <h3>{t("camera.photos")}</h3>
@@ -311,6 +372,12 @@
   }
 
   .error {
+    color: var(--color-danger);
+    font-size: var(--type-label-size);
+  }
+
+  .listening {
+    margin: var(--space-xs) 0 0;
     color: var(--color-danger);
     font-size: var(--type-label-size);
   }

@@ -113,6 +113,9 @@ export const en: Messages = {
   "camera.trigger.failedUnlock": "after failed unlocks",
   "camera.open": "Open",
   "camera.close": "Close",
+  "camera.listenStart": "Listen to the mic",
+  "camera.listenStop": "Mute the mic",
+  "camera.listening": "Mic live",
 
   "command.ring": "Ring",
   "command.stopRing": "Stop ring",
@@ -122,6 +125,7 @@ export const en: Messages = {
   "command.lock": "Lock",
   "command.capturePhoto": "Photo",
   "command.stream": "Live camera",
+  "command.audio": "Live mic",
   "command.wipe": "Wipe",
   "command.unpair": "Unpair",
   "command.status": "Status",

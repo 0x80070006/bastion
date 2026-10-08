@@ -110,6 +110,9 @@ pub type Emitter = Arc<dyn Fn(UiEvent) + Send + Sync>;
 /// Pushes a decrypted live stream frame (device id, sequence, JPEG) to the webview.
 pub type FrameSink = Arc<dyn Fn(&[u8], u64, &[u8]) + Send + Sync>;
 
+/// Pushes a decrypted live audio chunk (device id, sequence, PCM, sample rate) to the webview.
+pub type AudioSink = Arc<dyn Fn(&[u8], u64, &[u8], u32) + Send + Sync>;
+
 /// Events pushed to the webview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEvent {
@@ -128,6 +131,7 @@ pub struct AppCore {
     embedded: Mutex<Option<EmbeddedRelay>>,
     emit: Emitter,
     frames: FrameSink,
+    audio: AudioSink,
     generation: AtomicU64,
     poller: Mutex<Option<JoinHandle<()>>>,
     connection: Mutex<Connection>,
@@ -205,13 +209,14 @@ pub fn is_valid_host(host: &str) -> bool {
 
 impl AppCore {
     /// Creates the core; starts the embedded relay right away if configured.
-    pub fn new(paths: Paths, emit: Emitter, frames: FrameSink) -> Arc<Self> {
+    pub fn new(paths: Paths, emit: Emitter, frames: FrameSink, audio: AudioSink) -> Arc<Self> {
         let core = Arc::new(Self {
             paths,
             state: tokio::sync::Mutex::new(None),
             embedded: Mutex::new(None),
             emit,
             frames,
+            audio,
             generation: AtomicU64::new(0),
             poller: Mutex::new(None),
             connection: Mutex::new(Connection::Idle),
@@ -693,6 +698,12 @@ impl AppCore {
                     sequence,
                     jpeg,
                 } => (self.frames)(&device_id, sequence, &jpeg),
+                Media::Audio {
+                    device_id,
+                    sequence,
+                    pcm,
+                    sample_rate,
+                } => (self.audio)(&device_id, sequence, &pcm, sample_rate),
             }
         }
         if stored_photo {

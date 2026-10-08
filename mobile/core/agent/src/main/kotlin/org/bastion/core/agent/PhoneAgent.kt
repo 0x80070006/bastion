@@ -81,6 +81,13 @@ public sealed interface AgentCommand {
         public val edgePx: Int,
         public val durationSeconds: Int,
     ) : AgentCommand
+
+    /** Start or stop a near-live microphone stream. */
+    public class Audio(
+        override val messageId: ByteArray,
+        public val enabled: Boolean,
+        public val durationSeconds: Int,
+    ) : AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -554,15 +561,20 @@ public class PhoneAgent(private val sodium: Sodium) {
                 command.streamControl.cameraValue,
                 command.streamControl.maxFps.coerceIn(MIN_FPS, MAX_FPS),
                 command.streamControl.maxEdgePx.coerceIn(MIN_EDGE_PX, MAX_EDGE_PX),
-                if (command.streamControl.maxDurationSeconds == 0) {
-                    DEFAULT_STREAM_SECONDS
-                } else {
-                    command.streamControl.maxDurationSeconds.coerceIn(1, MAX_STREAM_SECONDS)
-                },
+                clampDuration(command.streamControl.maxDurationSeconds),
+            )
+
+            Command.KindCase.AUDIO_CONTROL -> AgentCommand.Audio(
+                id,
+                command.audioControl.enabled,
+                clampDuration(command.audioControl.maxDurationSeconds),
             )
 
             else -> null
         }
+
+        private fun clampDuration(seconds: Int): Int =
+            if (seconds == 0) DEFAULT_STREAM_SECONDS else seconds.coerceIn(1, MAX_STREAM_SECONDS)
 
         public fun sanitizeLabel(label: String): String =
             label.filterNot { it.isISOControl() }.trim().take(MAX_LABEL).ifEmpty { "Bastion" }

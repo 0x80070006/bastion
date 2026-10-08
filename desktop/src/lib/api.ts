@@ -120,7 +120,8 @@ export type CommandRequest =
       fps: number;
       edgePx: number;
       durationSeconds: number;
-    };
+    }
+  | { kind: "audio"; enabled: boolean; durationSeconds: number };
 
 export interface PhotoView {
   id: string;
@@ -135,6 +136,14 @@ export interface StreamFrame {
   deviceId: string;
   sequence: number;
   jpeg: string;
+}
+
+/** A live audio chunk pushed from the backend (base64 16-bit mono PCM). */
+export interface AudioChunkMsg {
+  deviceId: string;
+  sequence: number;
+  pcm: string;
+  sampleRate: number;
 }
 
 export type SensitiveRequest =
@@ -229,4 +238,9 @@ export async function onBackend(event: BackendEvent, handler: () => void): Promi
 /** Subscribes to live stream frames. */
 export async function onFrame(handler: (frame: StreamFrame) => void): Promise<UnlistenFn> {
   return listen<StreamFrame>("bastion://frame", (event) => handler(event.payload));
+}
+
+/** Subscribes to live audio chunks. */
+export async function onAudio(handler: (chunk: AudioChunkMsg) => void): Promise<UnlistenFn> {
+  return listen<AudioChunkMsg>("bastion://audio", (event) => handler(event.payload));
 }
