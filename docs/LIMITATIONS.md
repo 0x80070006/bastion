@@ -9,9 +9,9 @@ simulée dans l'app.
 | Élément | État | Conséquence |
 |---|---|---|
 | Tunnel WireGuard (`:core:vpn`, `:feature:vpn`) | non implémenté | Le canal passe par TLS 1.3 épinglé direct vers le relay (déjà prévu par l'architecture §3.4). Sécurité applicative identique ; les métadonnées réseau ne sont pas masquées. |
-| Rotation périodique des clés `XK` | réception gérée, émission non déclenchée | Les clés de session restent celles de l'appairage (fenêtre de compromission = durée de l'appairage ; ADR-0007). Ré-appairer renouvelle toutes les clés. |
-| Photo anti-intrusion (`CapturePhoto`) | refusée (`UNSUPPORTED`) | — |
-| Canal SMS de secours, géorepérage, alerte de changement de SIM, séparation Bluetooth | non implémentés | — |
+| Confidentialité persistante par message (double ratchet) | non | Rotation automatique des clés `XK` tous les 7 jours implémentée (émission + réception, des deux côtés) ; borne la fenêtre de compromission mais pas de PFS par message (ADR-0007). |
+| Canal SMS de secours, séparation Bluetooth | non implémentés | — |
+| Écoute audio / flux caméra en continu de longue durée | plafonnés à 5 min par session | Relancer la commande ; l'indicateur système reste visible. |
 | Proxy de tuiles via le relay distant | non | Les tuiles OpenStreetMap sont téléchargées par l'application PC (jamais par la page) : OSM voit l'IP du PC et la zone affichée. Désactivable dans Réglages. |
 | Coffre PC protégé en plus par le coffre de l'OS | non | Le coffre dépend du seul mot de passe maître (Argon2id 256 Mio). |
 | Changement du mot de passe maître | non | Recréer le coffre et ré-appairer. |

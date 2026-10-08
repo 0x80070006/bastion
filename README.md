@@ -5,7 +5,7 @@ sans compte cloud, sans télémétrie. *(Nom de code provisoire, défini dans `b
 
 | Composant | Dossier | Statut v0.1 |
 |---|---|---|
-| Bastion Mobile (Kotlin, Compose) | [`mobile/`](mobile) | appairage QR + SAS, service de protection, sonnerie, localisation, suivi, mode Perdu, verrouillage / effacement (admin d'appareil), alertes |
+| Bastion Mobile (Kotlin, Compose) | [`mobile/`](mobile) | appairage QR/lien + SAS, service de protection, sonnerie, localisation, suivi, géorepérage, mode Perdu (voix + sirène, plein écran), photo anti-intrusion, caméra et micro en direct, détection de changement de SIM, verrouillage / effacement (admin d'appareil), alertes, rotation auto des clés |
 | Bastion Desktop (Tauri 2, Svelte 5) | [`desktop/`](desktop) | coffre chiffré, relay intégré, appairage, carte, commandes, journal |
 | Bastion Relay (Rust, axum) | [`relay/`](relay) | enrôlement, boîtes aux lettres chiffrées de bout en bout, TLS 1.3 épinglé |
 | Protocole (Protobuf) | [`protocol/`](protocol) | v1 normatif + vecteurs d'interopérabilité |
