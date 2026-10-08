@@ -178,3 +178,37 @@ remplacé est marqué *Remplacé par ADR-xxxx*.
   `PK` scellée une seconde fois avec son propre sel. Le webview ne reçoit jamais de clé ; le délai
   de 30 s de l'effacement est imposé par le backend.
 
+## ADR-0022 — Média en direct sur la boîte aux lettres (pas de WebRTC)
+
+* **Contexte** : prendre une photo, voir la caméra ou entendre le micro à distance.
+* **Décision** : la photo (`CapturePhoto`/`PhotoReport`) et les flux « quasi directs » caméra
+  (`StreamControl`/`MediaFrame`, JPEG) et audio (`AudioControl`/`AudioChunk`, PCM 16 bits mono
+  16 kHz) passent par le **même canal chiffré de bout en bout** que les commandes : des
+  événements ordinaires relayés via la boîte aux lettres et l'attente longue. Pas de WebRTC ni de
+  flux temps réel (qui exigeraient WireGuard et un chemin média séparé, ADR-0019).
+* **Conséquences** : latence bornée par le cycle d'attente longue (quelques i/s en pratique),
+  chaque trame bornée à 384 KiO ; côté PC, lecture par Web Audio et affichage image par image.
+  Les photos sont persistées dans un magasin média chiffré séparé (une clé par fichier dérivée du
+  coffre), hors du coffre réécrit fréquemment.
+
+## ADR-0023 — Photo/caméra/micro toujours visibles, jamais discrets
+
+* **Décision** : toutes les captures s'appuient sur les services au premier plan typés `camera`
+  et `microphone` (Android 11+), donc l'indicateur système est affiché. Aucun mode caché. Le PC
+  affiche un avertissement légal avant d'activer caméra ou micro.
+* **Conséquences** : cohérent avec le modèle de menaces (anti-surveillance discrète). Un voleur
+  voit l'indicateur ; c'est assumé et documenté (LIMITATIONS.md, PERMISSIONS.md).
+
+## ADR-0024 — Appairage par lien profond
+
+* **Décision** : en plus du QR, l'URI `bastion://pair/v1#…` ouvre l'application via un
+  `intent-filter` VIEW et lance le même flux d'appairage. Il n'est traité qu'après le **verrou
+  d'application** et la **confirmation SAS**, donc la surface d'attaque est équivalente à celle du
+  QR (ADV6) : un lien malveillant ne peut pas appairer sans l'action explicite du propriétaire.
+
+## ADR-0025 — Géorepérage évalué sur le téléphone
+
+* **Décision** : les zones (`SetGeofences`) sont stockées sur le téléphone et évaluées localement à
+  chaque position (Haversine + hystérésis), ce qui permet d'alerter (`GEOFENCE_ENTER/EXIT`) et de
+  passer en suivi rapproché même quand le PC est hors ligne. Logique pure testée sans Android.
+

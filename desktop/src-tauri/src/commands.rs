@@ -320,6 +320,43 @@ pub enum CommandRequest {
     },
     /// Status report.
     Status,
+    /// Take one photo (front/back/unspecified).
+    #[serde(rename_all = "camelCase")]
+    CapturePhoto {
+        /// `front`, `back` or `unspecified`.
+        camera: String,
+    },
+    /// Start or stop a near-live camera stream.
+    #[serde(rename_all = "camelCase")]
+    Stream {
+        /// Whether to start (true) or stop (false) the stream.
+        enabled: bool,
+        /// `front` or `back`.
+        camera: String,
+        /// Target frames per second.
+        fps: u32,
+        /// Longest edge of each frame, in pixels.
+        edge_px: u32,
+        /// Hard stop after this many seconds.
+        duration_seconds: u32,
+    },
+    /// Start or stop a near-live microphone stream.
+    #[serde(rename_all = "camelCase")]
+    Audio {
+        /// Whether to start (true) or stop (false) the audio stream.
+        enabled: bool,
+        /// Hard stop after this many seconds.
+        duration_seconds: u32,
+    },
+}
+
+fn camera_value(name: &str) -> i32 {
+    use bastion_proto::v1::capture_photo::Camera;
+    match name {
+        "front" => Camera::Front as i32,
+        "back" => Camera::Back as i32,
+        _ => Camera::Unspecified as i32,
+    }
 }
 
 fn build_command(request: &CommandRequest) -> AppResult<Command> {
@@ -356,6 +393,31 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
             contact: c.as_ref().map(contact).transpose()?,
         }),
         CommandRequest::Status => command::Kind::RequestStatus(RequestStatus {}),
+        CommandRequest::CapturePhoto { camera } => {
+            command::Kind::CapturePhoto(bastion_proto::v1::CapturePhoto {
+                camera: camera_value(camera),
+            })
+        }
+        CommandRequest::Stream {
+            enabled,
+            camera,
+            fps,
+            edge_px,
+            duration_seconds,
+        } => command::Kind::StreamControl(bastion_proto::v1::StreamControl {
+            enabled: *enabled,
+            camera: camera_value(camera),
+            max_fps: (*fps).clamp(1, 10),
+            max_edge_px: (*edge_px).clamp(240, 1280),
+            max_duration_seconds: (*duration_seconds).clamp(1, 300),
+        }),
+        CommandRequest::Audio {
+            enabled,
+            duration_seconds,
+        } => command::Kind::AudioControl(bastion_proto::v1::AudioControl {
+            enabled: *enabled,
+            max_duration_seconds: (*duration_seconds).clamp(1, 300),
+        }),
     };
     Ok(Command { kind: Some(kind) })
 }
@@ -370,6 +432,136 @@ pub async fn send_command(core: Core<'_>, id: String, request: CommandRequest) -
     }
     core.mutate(|s| Ok(((), vec![s.command(&device_id, command, None, now_ms())?])))
         .await
+}
+
+/// A stored photo, newest first in [`photos`].
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoView {
+    id: String,
+    camera: String,
+    trigger: String,
+    captured_ms: i64,
+    has_location: bool,
+}
+
+/// A geofence as seen by the UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeofenceView {
+    #[serde(default)]
+    id: String,
+    name: String,
+    latitude: f64,
+    longitude: f64,
+    radius_m: f32,
+}
+
+/// Current geofences of a device.
+#[tauri::command]
+pub async fn geofences(core: Core<'_>, id: String) -> AppResult<Vec<GeofenceView>> {
+    let device_id = parse_device_id(&id)?;
+    core.read(|s| {
+        let d = s
+            .data
+            .devices
+            .iter()
+            .find(|d| d.device_id == device_id)
+            .ok_or(AppError::UnknownDevice)?;
+        Ok(d.geofences
+            .iter()
+            .map(|z| GeofenceView {
+                id: z.id.clone(),
+                name: z.name.clone(),
+                latitude: z.latitude,
+                longitude: z.longitude,
+                radius_m: z.radius_m,
+            })
+            .collect())
+    })
+    .await?
+}
+
+/// Replaces the geofences of a device and pushes them to the phone.
+#[tauri::command]
+pub async fn set_geofences(core: Core<'_>, id: String, zones: Vec<GeofenceView>) -> AppResult<()> {
+    let device_id = parse_device_id(&id)?;
+    if zones.len() > 32 {
+        return Err(AppError::InvalidInput);
+    }
+    let defs: Vec<crate::model::GeofenceDef> = zones
+        .into_iter()
+        .map(|z| {
+            if !z.latitude.is_finite()
+                || !z.longitude.is_finite()
+                || !(-90.0..=90.0).contains(&z.latitude)
+                || !(-180.0..=180.0).contains(&z.longitude)
+                || !z.radius_m.is_finite()
+            {
+                return Err(AppError::InvalidInput);
+            }
+            Ok(crate::model::GeofenceDef {
+                id: if z.id.is_empty() {
+                    hex::encode(bastion_crypto::random::bytes::<8>())
+                } else {
+                    z.id.chars()
+                        .filter(char::is_ascii_alphanumeric)
+                        .take(32)
+                        .collect()
+                },
+                name: z
+                    .name
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(64)
+                    .collect(),
+                latitude: z.latitude,
+                longitude: z.longitude,
+                radius_m: z.radius_m.clamp(50.0, 50_000.0),
+            })
+        })
+        .collect::<AppResult<_>>()?;
+    core.mutate(|s| Ok(((), vec![s.set_geofences(&device_id, defs, now_ms())?])))
+        .await
+}
+
+/// Metadata of a device's stored photos, newest first.
+#[tauri::command]
+pub async fn photos(core: Core<'_>, id: String) -> AppResult<Vec<PhotoView>> {
+    let device_id = parse_device_id(&id)?;
+    core.read(|s| {
+        let d = s
+            .data
+            .devices
+            .iter()
+            .find(|d| d.device_id == device_id)
+            .ok_or(AppError::UnknownDevice)?;
+        Ok(d.photos
+            .iter()
+            .rev()
+            .map(|p| PhotoView {
+                id: STANDARD.encode(&p.id),
+                camera: p.camera.clone(),
+                trigger: p.trigger.clone(),
+                captured_ms: p.captured_ms,
+                has_location: p.has_location,
+            })
+            .collect())
+    })
+    .await?
+}
+
+/// Returns a stored photo as a `data:image/jpeg;base64,…` URL.
+#[tauri::command]
+pub async fn photo(core: Core<'_>, photo_id: String) -> AppResult<String> {
+    let id = STANDARD
+        .decode(&photo_id)
+        .map_err(|_| AppError::InvalidInput)?;
+    if id.len() != 16 {
+        return Err(AppError::InvalidInput);
+    }
+    let jpeg = core.photo_bytes(&id).await?;
+    Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(&jpeg)))
 }
 
 /// Sensitive commands (re-authentication required).

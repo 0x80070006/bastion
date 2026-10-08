@@ -23,6 +23,7 @@ import org.bastion.protocol.v1.NetworkType
 import org.bastion.protocol.v1.ProtectionHealth
 
 /** Reads the protection prerequisites and device status (no personal data). */
+@Suppress("TooManyFunctions")
 class DeviceState(private val context: Context) {
     private fun granted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -36,6 +37,25 @@ class DeviceState(private val context: Context) {
 
     fun hasNotifications(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         granted(Manifest.permission.POST_NOTIFICATIONS)
+
+    fun hasCamera(): Boolean = granted(Manifest.permission.CAMERA) &&
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+
+    /** SIM operator MCC+MNC (e.g. "20801"), or "" when no SIM is present. No permission needed. */
+    fun simOperator(): String {
+        val tm = context.getSystemService<android.telephony.TelephonyManager>() ?: return ""
+        return if (tm.simState == android.telephony.TelephonyManager.SIM_STATE_READY) tm.simOperator.orEmpty() else ""
+    }
+
+    fun simOperatorName(): String =
+        context.getSystemService<android.telephony.TelephonyManager>()?.simOperatorName.orEmpty()
+
+    fun simPresent(): Boolean {
+        val state = context.getSystemService<android.telephony.TelephonyManager>()?.simState
+        return state != null &&
+            state != android.telephony.TelephonyManager.SIM_STATE_ABSENT &&
+            state != android.telephony.TelephonyManager.SIM_STATE_UNKNOWN
+    }
 
     fun isAdminActive(): Boolean =
         context.getSystemService<DevicePolicyManager>()?.isAdminActive(adminComponent) == true

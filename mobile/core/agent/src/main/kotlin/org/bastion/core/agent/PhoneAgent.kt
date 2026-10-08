@@ -29,6 +29,7 @@ import org.bastion.protocol.v1.CommandResult
 import org.bastion.protocol.v1.EnrollRequest
 import org.bastion.protocol.v1.EnrollResponse
 import org.bastion.protocol.v1.Event
+import org.bastion.protocol.v1.KeyRotation
 import org.bastion.protocol.v1.MessageBody
 import org.bastion.protocol.v1.PairingConfirm
 import org.bastion.protocol.v1.PairingHello
@@ -69,7 +70,30 @@ public sealed interface AgentCommand {
 
     public class Status(override val messageId: ByteArray) : AgentCommand
 
-    public class CapturePhoto(override val messageId: ByteArray) : AgentCommand
+    public class CapturePhoto(override val messageId: ByteArray, public val camera: Int) : AgentCommand
+
+    /** Start or stop a near-live camera stream. Parameters are clamped to safe ranges. */
+    public class Stream(
+        override val messageId: ByteArray,
+        public val enabled: Boolean,
+        public val camera: Int,
+        public val fps: Int,
+        public val edgePx: Int,
+        public val durationSeconds: Int,
+    ) : AgentCommand
+
+    /** Start or stop a near-live microphone stream. */
+    public class Audio(
+        override val messageId: ByteArray,
+        public val enabled: Boolean,
+        public val durationSeconds: Int,
+    ) : AgentCommand
+
+    /** Replaces the watched geofences (empty list disables geofencing). */
+    public class SetGeofences(
+        override val messageId: ByteArray,
+        public val zones: List<org.bastion.protocol.v1.Geofence>,
+    ) : AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -225,6 +249,40 @@ public class PhoneAgent(private val sodium: Sodium) {
         if (!isActive(state)) return null
         val (pairing, envelope) = seal(state.pairing, nowMs, EVENT_TTL_S) { it.setEvent(event) }
         return state.toBuilder().setPairing(pairing).build() to envelope
+    }
+
+    /** Whether the X25519 key should be rotated (PROTOCOL.md §4; default every 7 days). */
+    public fun shouldRotate(state: AgentState, nowMs: Long): Boolean {
+        if (!isActive(state)) return false
+        val last = state.pairing.lastRotationMs.takeIf { it > 0 } ?: state.pairing.pairedAtMs
+        return nowMs - last >= ROTATION_INTERVAL_MS
+    }
+
+    /**
+     * Rotates the X25519 key: the signed `KeyRotation` is sealed under the current epoch (so the
+     * controller can still read it), then the new key becomes current for later messages.
+     */
+    public fun rotateExchangeKey(state: AgentState, nowMs: Long): Pair<AgentState, ByteArray>? {
+        if (!isActive(state)) return null
+        val newEpoch = state.pairing.exchangeEpoch + 1
+        return ExchangeKeypair.generate(sodium, newEpoch).use { newXk ->
+            SigningKeypair(sodium, state.pairing.identitySeed.toByteArray()).use { ik ->
+                val keys = newXk.signedBy(ik)
+                val rotation = KeyRotation.newBuilder()
+                    .setNewEpoch(newEpoch)
+                    .setX25519PublicKey(ByteString.copyFrom(keys.exchange))
+                    .setX25519Signature(ByteString.copyFrom(keys.exchangeSignature))
+                    .build()
+                // Seal under the OLD key first.
+                val (pairing, envelope) = seal(state.pairing, nowMs, EVENT_TTL_S) { it.setKeyRotation(rotation) }
+                val updated = pairing.toBuilder()
+                    .setExchangeSecret(ByteString.copyFrom(newXk.exportSecret()))
+                    .setExchangeEpoch(newEpoch)
+                    .setLastRotationMs(nowMs)
+                    .build()
+                state.toBuilder().setPairing(updated).build() to envelope
+            }
+        }
     }
 
     /** Builds a `CommandResult` envelope. */
@@ -433,6 +491,13 @@ public class PhoneAgent(private val sodium: Sodium) {
         private const val MAX_LABEL = 64
         private const val MAX_RING_SECONDS = 600
         private const val U32_MASK = 0xffffffffL
+        private const val MIN_FPS = 1
+        private const val MAX_FPS = 10
+        private const val MIN_EDGE_PX = 240
+        private const val MAX_EDGE_PX = 1280
+        private const val DEFAULT_STREAM_SECONDS = 60
+        private const val MAX_STREAM_SECONDS = 300
+        private const val ROTATION_INTERVAL_MS = 7L * 24 * 3600 * 1000
 
         /** TTL caps per payload type (PROTOCOL.md §6.8). */
         internal fun effectiveTtlSeconds(body: MessageBody): Long {
@@ -462,6 +527,7 @@ public class PhoneAgent(private val sodium: Sodium) {
         private fun contact(card: org.bastion.protocol.v1.ContactCard): ContactCard? =
             ContactCard.create(card.message, card.phone, card.email).getOrNull()
 
+        @Suppress("CyclomaticComplexMethod")
         internal fun decode(id: ByteArray, command: Command): AgentCommand? = when (command.kindCase) {
             Command.KindCase.RING -> AgentCommand.Ring(
                 id,
@@ -493,10 +559,30 @@ public class PhoneAgent(private val sodium: Sodium) {
 
             Command.KindCase.REQUEST_STATUS -> AgentCommand.Status(id)
 
-            Command.KindCase.CAPTURE_PHOTO -> AgentCommand.CapturePhoto(id)
+            Command.KindCase.CAPTURE_PHOTO -> AgentCommand.CapturePhoto(id, command.capturePhoto.cameraValue)
+
+            Command.KindCase.STREAM_CONTROL -> AgentCommand.Stream(
+                id,
+                command.streamControl.enabled,
+                command.streamControl.cameraValue,
+                command.streamControl.maxFps.coerceIn(MIN_FPS, MAX_FPS),
+                command.streamControl.maxEdgePx.coerceIn(MIN_EDGE_PX, MAX_EDGE_PX),
+                clampDuration(command.streamControl.maxDurationSeconds),
+            )
+
+            Command.KindCase.AUDIO_CONTROL -> AgentCommand.Audio(
+                id,
+                command.audioControl.enabled,
+                clampDuration(command.audioControl.maxDurationSeconds),
+            )
+
+            Command.KindCase.SET_GEOFENCES -> AgentCommand.SetGeofences(id, command.setGeofences.zonesList)
 
             else -> null
         }
+
+        private fun clampDuration(seconds: Int): Int =
+            if (seconds == 0) DEFAULT_STREAM_SECONDS else seconds.coerceIn(1, MAX_STREAM_SECONDS)
 
         public fun sanitizeLabel(label: String): String =
             label.filterNot { it.isISOControl() }.trim().take(MAX_LABEL).ifEmpty { "Bastion" }

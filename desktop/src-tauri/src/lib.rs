@@ -49,6 +49,35 @@ fn emitter(app: AppHandle) -> crate::core::Emitter {
     })
 }
 
+/// Pushes a live stream frame to the webview as a base64 JPEG (payload stays off disk).
+fn frame_sink(app: AppHandle) -> crate::core::FrameSink {
+    use base64::Engine;
+    Arc::new(move |device_id: &[u8], sequence: u64, jpeg: &[u8]| {
+        let payload = serde_json::json!({
+            "deviceId": hex::encode(device_id),
+            "sequence": sequence,
+            "jpeg": base64::engine::general_purpose::STANDARD.encode(jpeg),
+        });
+        let _ = app.emit("bastion://frame", payload);
+    })
+}
+
+/// Pushes a live audio chunk to the webview as base64 PCM.
+fn audio_sink(app: AppHandle) -> crate::core::AudioSink {
+    use base64::Engine;
+    Arc::new(
+        move |device_id: &[u8], sequence: u64, pcm: &[u8], sample_rate: u32| {
+            let payload = serde_json::json!({
+                "deviceId": hex::encode(device_id),
+                "sequence": sequence,
+                "pcm": base64::engine::general_purpose::STANDARD.encode(pcm),
+                "sampleRate": sample_rate,
+            });
+            let _ = app.emit("bastion://audio", payload);
+        },
+    )
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Ouvrir / Open", true, None::<&str>)?;
     let lock = MenuItem::with_id(app, "lock", "Verrouiller / Lock", true, None::<&str>)?;
@@ -105,7 +134,12 @@ pub fn run() {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
             std::fs::create_dir_all(&data)?;
-            let core = AppCore::new(Paths::new(&data, &cache), emitter(app.handle().clone()));
+            let core = AppCore::new(
+                Paths::new(&data, &cache),
+                emitter(app.handle().clone()),
+                frame_sink(app.handle().clone()),
+                audio_sink(app.handle().clone()),
+            );
             app.manage(Arc::clone(&core));
             tauri::async_runtime::spawn(async move {
                 let mut tick = tokio::time::interval(Duration::from_secs(20));
@@ -157,6 +191,10 @@ pub fn run() {
             commands::cancel_pairing,
             commands::confirm_pairing,
             commands::send_command,
+            commands::photos,
+            commands::photo,
+            commands::geofences,
+            commands::set_geofences,
             commands::arm_wipe,
             commands::disarm_wipe,
             commands::send_sensitive,

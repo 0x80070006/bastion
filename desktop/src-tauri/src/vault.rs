@@ -126,6 +126,29 @@ impl VaultKey {
             .map_err(|_| AppError::WrongPassword)?;
         serde_json::from_slice(&plaintext).map_err(|_| AppError::VaultCorrupted)
     }
+
+    /// Encrypts a media blob (photo) with the vault key, bound to `id` so a file cannot be
+    /// swapped for another. Returned bytes are a self-contained `nonce ‖ ciphertext`.
+    #[must_use]
+    pub fn seal_media(&self, id: &[u8], bytes: &[u8]) -> Vec<u8> {
+        self.key.seal(&media_aad(id), bytes)
+    }
+
+    /// Decrypts a media blob produced by [`Self::seal_media`].
+    ///
+    /// # Errors
+    /// [`AppError::VaultCorrupted`].
+    pub fn open_media(&self, id: &[u8], sealed: &[u8]) -> AppResult<Zeroizing<Vec<u8>>> {
+        self.key
+            .open(&media_aad(id), sealed)
+            .map_err(|_| AppError::VaultCorrupted)
+    }
+}
+
+fn media_aad(id: &[u8]) -> Vec<u8> {
+    let mut aad = b"bastion-media-v1".to_vec();
+    aad.extend_from_slice(id);
+    aad
 }
 
 /// The privileged key sealed under its own password-derived key.

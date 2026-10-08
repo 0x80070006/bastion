@@ -22,6 +22,9 @@ message Command {
     // Sensitive: requires privileged_signature.
     Unpair unpair = 9;
     RequestStatus request_status = 10;
+    StreamControl stream_control = 11;
+    AudioControl audio_control = 12;
+    SetGeofences set_geofences = 13;
   }
 }
 
@@ -81,6 +84,45 @@ message CapturePhoto {
     CAMERA_BACK = 2;
   }
   Camera camera = 1;
+}
+
+// Near-live camera stream over the end-to-end channel. The phone emits MediaFrame events
+// (events.proto) while enabled. The OS camera indicator is always visible; the phone enforces
+// an owner-chosen maximum duration so a stream cannot run indefinitely.
+message StreamControl {
+  bool enabled = 1;
+  CapturePhoto.Camera camera = 2;
+  // Target frames per second, clamped by the phone to 1..10.
+  uint32 max_fps = 3;
+  // Longest edge of each frame in pixels, clamped by the phone (e.g. 240..1280).
+  uint32 max_edge_px = 4;
+  // Hard stop after this many seconds, clamped by the phone to 1..300 (0 = phone default).
+  uint32 max_duration_seconds = 5;
+}
+
+// Near-live microphone stream over the end-to-end channel. The OS microphone indicator is
+// always visible; recording another person may be legally restricted (shown before start).
+message AudioControl {
+  bool enabled = 1;
+  // Hard stop after this many seconds, clamped by the phone to 1..300 (0 = phone default).
+  uint32 max_duration_seconds = 2;
+}
+
+// A circular geofence the phone watches, alerting on entry and exit.
+message Geofence {
+  // Stable identifier chosen by the controller.
+  string id = 1;
+  double latitude = 2;
+  double longitude = 3;
+  // Radius in metres (the phone clamps it to a sane minimum).
+  float radius_m = 4;
+  // Human-readable label, max 64 chars.
+  string name = 5;
+}
+
+// Replaces the full set of geofences on the phone (empty list disables geofencing).
+message SetGeofences {
+  repeated Geofence zones = 1;
 }
 
 message Wipe {

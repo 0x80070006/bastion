@@ -130,6 +130,13 @@ Envelope.ciphertext = XChaCha20-Poly1305(key, nonce 24 aléatoire, AAD, SignedMe
 croissant par direction, persisté avant envoi), `timestamp_ms`, `ttl_seconds`, `payload`
 (`Command`, `Event`, `KeyRotation`, `CommandResult`, `PairingConfirm`).
 
+Commandes PC→téléphone : `Ring`/`StopRing`, `LocateNow`, `SetTrackingMode`, `LostMode`, `Lock`*,
+`Wipe`*, `Unpair`*, `RequestStatus`, `CapturePhoto`, `StreamControl` (flux caméra), `AudioControl`
+(flux micro), `SetGeofences` (zones). Événements téléphone→PC : `LocationReport`, `StatusReport`,
+`Alert` (dont SIM, géorepérage, échec de déverrouillage), `PhotoReport`, `MediaFrame` (JPEG),
+`AudioChunk` (PCM 16 bits mono), `LastChanceBeacon`. (* = contresignature `PK`.) La photo, les
+trames caméra/audio et les zones empruntent le même canal chiffré que les commandes (ADR-0022).
+
 ## 6. Règles de réception (DOIT, dans cet ordre)
 
 1. Enveloppe ≤ 512 KiO avant tout parsing ; version 1 ; identifiants de 16 octets, nonce de 24.

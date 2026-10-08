@@ -222,6 +222,46 @@ pub struct DeviceRecord {
     pub status: Option<StatusView>,
     /// Recent commands (bounded).
     pub commands: VecDeque<SentCommand>,
+    /// Anti-intrusion / on-demand photos (metadata; the JPEG lives in the media store).
+    #[serde(default)]
+    pub photos: VecDeque<PhotoMeta>,
+    /// Geofences watched by this phone.
+    #[serde(default)]
+    pub geofences: Vec<GeofenceDef>,
+}
+
+/// A circular geofence configured for a device.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeofenceDef {
+    /// Stable identifier.
+    pub id: String,
+    /// Label shown in the UI and journal.
+    pub name: String,
+    /// Centre latitude.
+    pub latitude: f64,
+    /// Centre longitude.
+    pub longitude: f64,
+    /// Radius in metres.
+    pub radius_m: f32,
+}
+
+/// Metadata of a stored photo. The JPEG itself is kept as a separate encrypted file named
+/// by `id`; this keeps large images out of the frequently re-encrypted vault.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoMeta {
+    /// 16-byte identifier, also the media file name.
+    #[serde(with = "b64")]
+    pub id: Vec<u8>,
+    /// `front`, `back` or `unspecified`.
+    pub camera: String,
+    /// `onDemand` or `failedUnlock`.
+    pub trigger: String,
+    /// When the phone captured it.
+    pub captured_ms: i64,
+    /// Whether a location accompanied the photo.
+    pub has_location: bool,
 }
 
 /// Security journal entry.
@@ -252,6 +292,9 @@ pub struct VaultData {
     pub exchange_secret: Secret,
     /// Epoch of `XK`.
     pub exchange_epoch: u32,
+    /// When `XK` was last rotated (0 = never since creation).
+    #[serde(default)]
+    pub exchange_rotated_ms: i64,
     /// Privileged key `PK` public half.
     #[serde(with = "b64")]
     pub privileged_public: Vec<u8>,
@@ -275,6 +318,8 @@ pub const MAX_JOURNAL: usize = 1000;
 pub const MAX_LOCATIONS: usize = 2000;
 /// Maximum remembered commands per device.
 pub const MAX_COMMANDS: usize = 100;
+/// Maximum stored photos per device (older ones and their files are purged).
+pub const MAX_PHOTOS: usize = 200;
 
 impl VaultData {
     /// Appends a journal entry, dropping the oldest beyond [`MAX_JOURNAL`].
@@ -310,6 +355,7 @@ impl VaultData {
             identity_seed: Secret(vec![1; 32]),
             exchange_secret: Secret(vec![2; 32]),
             exchange_epoch: 0,
+            exchange_rotated_ms: 0,
             privileged_public: vec![3; 32],
             privileged_sealed: SealedPrivilegedKey::seal(
                 "correct horse battery",

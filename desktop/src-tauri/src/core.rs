@@ -44,6 +44,8 @@ pub struct Paths {
     pub relay_dir: PathBuf,
     /// Map tile cache.
     pub tiles: PathBuf,
+    /// Encrypted photos (one file per photo, named by id).
+    pub media: PathBuf,
 }
 
 impl Paths {
@@ -55,6 +57,7 @@ impl Paths {
             launch: data.join("launch.json"),
             relay_dir: data.join("relay"),
             tiles: cache.join("tiles"),
+            media: data.join("media"),
         }
     }
 }
@@ -104,6 +107,12 @@ struct Unlocked {
 /// UI notification hook (Tauri event emitter in production).
 pub type Emitter = Arc<dyn Fn(UiEvent) + Send + Sync>;
 
+/// Pushes a decrypted live stream frame (device id, sequence, JPEG) to the webview.
+pub type FrameSink = Arc<dyn Fn(&[u8], u64, &[u8]) + Send + Sync>;
+
+/// Pushes a decrypted live audio chunk (device id, sequence, PCM, sample rate) to the webview.
+pub type AudioSink = Arc<dyn Fn(&[u8], u64, &[u8], u32) + Send + Sync>;
+
 /// Events pushed to the webview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEvent {
@@ -121,6 +130,8 @@ pub struct AppCore {
     state: tokio::sync::Mutex<Option<Unlocked>>,
     embedded: Mutex<Option<EmbeddedRelay>>,
     emit: Emitter,
+    frames: FrameSink,
+    audio: AudioSink,
     generation: AtomicU64,
     poller: Mutex<Option<JoinHandle<()>>>,
     connection: Mutex<Connection>,
@@ -198,12 +209,14 @@ pub fn is_valid_host(host: &str) -> bool {
 
 impl AppCore {
     /// Creates the core; starts the embedded relay right away if configured.
-    pub fn new(paths: Paths, emit: Emitter) -> Arc<Self> {
+    pub fn new(paths: Paths, emit: Emitter, frames: FrameSink, audio: AudioSink) -> Arc<Self> {
         let core = Arc::new(Self {
             paths,
             state: tokio::sync::Mutex::new(None),
             embedded: Mutex::new(None),
             emit,
+            frames,
+            audio,
             generation: AtomicU64::new(0),
             poller: Mutex::new(None),
             connection: Mutex::new(Connection::Idle),
@@ -559,6 +572,7 @@ impl AppCore {
                     if !batch.items.is_empty() {
                         self.process(&client, generation, batch).await;
                     }
+                    self.maybe_rotate_keys().await;
                 }
                 Err(error) => {
                     self.set_connection(if error == AppError::RelayPinMismatch {
@@ -581,6 +595,7 @@ impl AppCore {
     ) {
         let mut actions = Vec::new();
         let mut notices = Vec::new();
+        let mut media = Vec::new();
         let mut ids = Vec::new();
         {
             let mut guard = self.state.lock().await;
@@ -592,19 +607,21 @@ impl AppCore {
             }
             let now = now_ms();
             for item in &batch.items {
-                let (a, n) =
+                let (a, n, m) =
                     unlocked
                         .session
                         .handle_item(item.kind, &item.sender_id, &item.payload, now);
                 actions.extend(a);
                 notices.extend(n);
+                media.extend(m);
                 ids.push(item.id);
             }
-            // Persist (counters, replay windows) before acknowledging.
+            // Persist (counters, replay windows, photo metadata) before storing bytes or acking.
             if let Err(error) = Self::save(&self.paths, unlocked) {
                 tracing::error!(%error, "vault save failed; items left on the relay");
                 return;
             }
+            self.store_media(unlocked, media);
         }
         let _ = self.execute(client, actions).await;
         if let Err(error) = client.ack(ids).await {
@@ -636,6 +653,102 @@ impl AppCore {
 
     fn save(paths: &Paths, unlocked: &Unlocked) -> AppResult<()> {
         vault::write_atomic(&paths.vault, &unlocked.key.seal(&unlocked.session.data)?)
+    }
+
+    /// Rotates the controller's X25519 key when due (PROTOCOL.md §4), persisting before send.
+    async fn maybe_rotate_keys(&self) {
+        let due = {
+            let guard = self.state.lock().await;
+            guard
+                .as_ref()
+                .is_some_and(|u| u.session.should_rotate_self(now_ms()))
+        };
+        if !due {
+            return;
+        }
+        if let Err(error) = self.mutate(|s| Ok(((), s.rotate_self(now_ms())?))).await {
+            tracing::warn!(%error, "key rotation failed");
+        }
+    }
+
+    /// Persists photos to the encrypted media store and forwards live frames to the webview.
+    fn store_media(&self, unlocked: &Unlocked, media: Vec<crate::engine::Media>) {
+        use crate::engine::Media;
+        let mut stored_photo = false;
+        for item in media {
+            match item {
+                Media::Photo { photo_id, jpeg, .. } => {
+                    if let Err(error) = std::fs::create_dir_all(&self.paths.media) {
+                        tracing::error!(%error, "cannot create media directory");
+                        continue;
+                    }
+                    let sealed = unlocked.key.seal_media(&photo_id, &jpeg);
+                    let path = self
+                        .paths
+                        .media
+                        .join(format!("{}.enc", hex::encode(&photo_id)));
+                    if let Err(error) = vault::write_atomic(&path, &sealed) {
+                        tracing::error!(%error, "cannot write photo");
+                    } else {
+                        stored_photo = true;
+                    }
+                }
+                Media::Frame {
+                    device_id,
+                    sequence,
+                    jpeg,
+                } => (self.frames)(&device_id, sequence, &jpeg),
+                Media::Audio {
+                    device_id,
+                    sequence,
+                    pcm,
+                    sample_rate,
+                } => (self.audio)(&device_id, sequence, &pcm, sample_rate),
+            }
+        }
+        if stored_photo {
+            self.prune_media(unlocked);
+        }
+    }
+
+    /// Deletes media files no longer referenced by any device's photo metadata.
+    fn prune_media(&self, unlocked: &Unlocked) {
+        let kept: std::collections::HashSet<String> = unlocked
+            .session
+            .data
+            .devices
+            .iter()
+            .flat_map(|d| d.photos.iter().map(|p| hex::encode(&p.id)))
+            .collect();
+        let Ok(entries) = std::fs::read_dir(&self.paths.media) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(id) = name.strip_suffix(".enc")
+                && !kept.contains(id)
+            {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+
+    /// Returns the JPEG of a stored photo.
+    ///
+    /// # Errors
+    /// [`AppError::Locked`], [`AppError::UnknownDevice`] or [`AppError::VaultCorrupted`].
+    pub async fn photo_bytes(&self, photo_id: &[u8]) -> AppResult<Vec<u8>> {
+        let guard = self.state.lock().await;
+        let unlocked = guard.as_ref().ok_or(AppError::Locked)?;
+        let path = self
+            .paths
+            .media
+            .join(format!("{}.enc", hex::encode(photo_id)));
+        let sealed = std::fs::read(&path).map_err(|_| AppError::UnknownDevice)?;
+        unlocked
+            .key
+            .open_media(photo_id, &sealed)
+            .map(|bytes| bytes.to_vec())
     }
 
     /// Runs `f` on the unlocked session, persists, then performs the returned actions.

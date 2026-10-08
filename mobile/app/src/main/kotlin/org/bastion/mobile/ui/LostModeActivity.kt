@@ -13,20 +13,25 @@ import javax.inject.Inject
 import org.bastion.core.designsystem.theme.BastionTheme
 import org.bastion.feature.protection.LostModeScreen
 import org.bastion.mobile.data.AgentRepository
+import org.bastion.mobile.service.LostAnnouncer
 
 /**
- * Shown above the lock screen while Lost mode is on. It only displays the contact card the
- * owner chose; dismissing it requires unlocking the phone.
+ * Shown above the lock screen while Lost mode is on, like a full-screen call alert. It displays
+ * the owner's contact card and announces it aloud (siren + speech); dismissing it requires
+ * unlocking the phone.
  */
 @AndroidEntryPoint
 class LostModeActivity : ComponentActivity() {
     @Inject lateinit var repository: AgentRepository
+    private val announcer by lazy { LostAnnouncer(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val settings = repository.state.value.settings
+        announcer.start(settings.contactMessage, settings.contactPhone)
         setContent {
             BastionTheme {
                 val state by repository.state.collectAsStateWithLifecycle()
@@ -41,7 +46,13 @@ class LostModeActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        announcer.stop()
+        super.onDestroy()
+    }
+
     private fun dismissAsOwner() {
+        announcer.stop()
         val keyguard = getSystemService<KeyguardManager>()
         if (keyguard == null || !keyguard.isKeyguardLocked) {
             finish()

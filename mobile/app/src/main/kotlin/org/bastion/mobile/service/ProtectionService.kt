@@ -27,16 +27,22 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.bastion.core.agent.AgentCommand
+import org.bastion.core.agent.Geofencing
 import org.bastion.core.agent.PhoneAgent
 import org.bastion.core.domain.model.ContactCard
 import org.bastion.mobile.data.AgentRepository
 import org.bastion.mobile.data.RelayException
 import org.bastion.mobile.ui.LostModeActivity
+import org.bastion.protocol.v1.Alert
+import org.bastion.protocol.v1.AudioChunk
+import org.bastion.protocol.v1.CapturePhoto
 import org.bastion.protocol.v1.CommandResult.Status
 import org.bastion.protocol.v1.Event
 import org.bastion.protocol.v1.LastChanceBeacon
 import org.bastion.protocol.v1.LocationReport
 import org.bastion.protocol.v1.MailboxItem
+import org.bastion.protocol.v1.MediaFrame
+import org.bastion.protocol.v1.PhotoReport
 import org.bastion.protocol.v1.StatusReport
 import org.bastion.protocol.v1.TrackingMode
 
@@ -57,6 +63,8 @@ class ProtectionService : Service() {
     private lateinit var alarm: Alarm
     private var loop: Job? = null
     private var periodic: Job? = null
+    private var streamJob: Job? = null
+    private var audioJob: Job? = null
     private var lastTrackedFixMs = 0L
     private var appliedTracking = -1
 
@@ -102,9 +110,21 @@ class ProtectionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         goForeground()
-        if (intent?.action == ACTION_STOP_RING) {
-            alarm.stop()
-            getSystemService<NotificationManager>()?.cancel(Notifications.ID_ALARM)
+        when (intent?.action) {
+            ACTION_STOP_RING -> {
+                alarm.stop()
+                getSystemService<NotificationManager>()?.cancel(Notifications.ID_ALARM)
+            }
+
+            ACTION_INTRUSION_PHOTO -> if (agent.isActive(repository.state.value)) {
+                scope.launch {
+                    capturePhoto(
+                        null,
+                        CapturePhoto.Camera.CAMERA_FRONT_VALUE,
+                        PhotoReport.Trigger.TRIGGER_FAILED_UNLOCK,
+                    )
+                }
+            }
         }
         if (loop?.isActive != true) loop = scope.launch { run() }
         return START_STICKY
@@ -114,14 +134,16 @@ class ProtectionService : Service() {
         unregisterReceiver(systemEvents)
         alarm.stop()
         locator.stopTracking()
+        streamJob?.cancel()
+        audioJob?.cancel()
         scope.cancel()
         super.onDestroy()
     }
 
-    private fun goForeground() {
+    private fun goForeground(camera: Boolean = false, mic: Boolean = false) {
         val active = agent.isActive(repository.state.value)
         val notification = Notifications.protection(this, active)
-        val type = when {
+        var type = when {
             device.hasLocation() -> ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
 
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
@@ -129,10 +151,17 @@ class ProtectionService : Service() {
 
             else -> 0
         }
+        // The camera/microphone types are required to use them from the background on Android 11+.
+        if (camera && device.hasCamera() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        }
+        if (mic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
         try {
             ServiceCompat.startForeground(this, Notifications.ID_PROTECTION, notification, type)
         } catch (e: SecurityException) {
-            // Location type refused (e.g. started from the background without that access).
+            // A declared type was refused (e.g. started from the background without that access).
             Log.w(TAG, "foreground type refused: ${e.javaClass.simpleName}")
             val fallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
@@ -188,11 +217,31 @@ class ProtectionService : Service() {
         periodic?.cancel()
         periodic = scope.launch {
             while (isActive) {
+                checkSim()
+                if (repository.shouldRotate()) repository.rotateKeys()
                 sendStatus()
                 delay(STATUS_PERIOD_MS)
             }
         }
         if (repository.state.value.settings.lostMode) showLost()
+    }
+
+    /** Detects a SIM swap or removal (a thief changing the SIM) and alerts the controller. */
+    private suspend fun checkSim() {
+        val current = device.simOperator()
+        val stored = repository.state.value.settings.simOperator
+        if (stored == current) return
+        updateSettings { it.setSimOperator(current) }
+        if (stored.isEmpty()) return // First observation: just record it, no alert.
+        val (type, detail) = if (current.isEmpty()) {
+            Alert.Type.TYPE_SIM_REMOVED to emptyMap()
+        } else {
+            Alert.Type.TYPE_SIM_CHANGED to mapOf("operator" to device.simOperatorName().ifBlank { current })
+        }
+        val alert = Alert.newBuilder().setType(type).putAllDetail(detail)
+        locator.lastKnown()?.let { alert.setLocation(Locator.toProto(it)) }
+        repository.sendEvent(Event.newBuilder().setAlert(alert).build())
+        repository.log("alert.${type.name}")
     }
 
     @Suppress("LoopWithTooManyJumpStatements")
@@ -257,8 +306,145 @@ class ProtectionService : Service() {
                 repository.sendResult(id, Status.STATUS_COMPLETED)
             }
 
-            is AgentCommand.CapturePhoto -> repository.sendResult(id, Status.STATUS_UNSUPPORTED, "not_implemented")
+            is AgentCommand.CapturePhoto ->
+                capturePhoto(id, command.camera, PhotoReport.Trigger.TRIGGER_ON_DEMAND)
+
+            is AgentCommand.Stream -> stream(command)
+
+            is AgentCommand.Audio -> audio(command)
+
+            is AgentCommand.SetGeofences -> setGeofences(command)
         }
+    }
+
+    @Suppress("LoopWithTooManyJumpStatements")
+    private fun audio(command: AgentCommand.Audio) {
+        audioJob?.cancel()
+        if (!command.enabled) {
+            goForeground()
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_COMPLETED) }
+            return
+        }
+        val capture = AudioCapture(this)
+        if (!capture.hasPermission()) {
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_FAILED, "mic_permission_denied") }
+            return
+        }
+        goForeground(mic = true)
+        audioJob = scope.launch {
+            repository.sendResult(command.messageId, Status.STATUS_ACCEPTED)
+            if (!capture.start()) {
+                goForeground()
+                repository.sendResult(command.messageId, Status.STATUS_FAILED, "mic_unavailable")
+                return@launch
+            }
+            val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
+            var sequence = 0L
+            try {
+                while (isActive && System.currentTimeMillis() < endAt) {
+                    val chunk = capture.read() ?: break
+                    if (!sendAudio(sequence++, chunk)) break
+                }
+            } finally {
+                capture.stop()
+                goForeground()
+            }
+        }
+    }
+
+    private suspend fun sendAudio(sequence: Long, chunk: AudioChunkData): Boolean {
+        val audio = AudioChunk.newBuilder()
+            .setSequence(sequence)
+            .setCapturedAtMs(System.currentTimeMillis())
+            .setPcm(com.google.protobuf.ByteString.copyFrom(chunk.pcm))
+            .setSampleRate(chunk.sampleRate)
+            .build()
+        return repository.sendEvent(Event.newBuilder().setAudioChunk(audio).build())
+    }
+
+    /** Captures and sends one photo. `commandId` is null for an automatic intrusion photo. */
+    private suspend fun capturePhoto(commandId: ByteArray?, cameraValue: Int, trigger: PhotoReport.Trigger) {
+        if (!device.hasCamera()) {
+            commandId?.let { repository.sendResult(it, Status.STATUS_FAILED, "camera_permission_denied") }
+            return
+        }
+        goForeground(camera = true)
+        val camera = CameraCapture(this)
+        val image = try {
+            if (camera.start(cameraValue, PHOTO_EDGE_PX)) camera.capture() else null
+        } finally {
+            camera.stop()
+            camera.shutdown()
+        }
+        goForeground()
+        if (image == null) {
+            commandId?.let { repository.sendResult(it, Status.STATUS_FAILED, "camera_unavailable") }
+            return
+        }
+        val report = PhotoReport.newBuilder()
+            .setJpeg(com.google.protobuf.ByteString.copyFrom(image.jpeg))
+            .setCapturedAtMs(System.currentTimeMillis())
+            .setCameraValue(cameraValue)
+            .setTrigger(trigger)
+            .apply {
+                commandId?.let { setCommandMessageId(com.google.protobuf.ByteString.copyFrom(it)) }
+                locator.lastKnown()?.let { setLocation(Locator.toProto(it)) }
+            }
+            .build()
+        repository.sendEvent(Event.newBuilder().setPhoto(report).build())
+        commandId?.let { repository.sendResult(it, Status.STATUS_COMPLETED) }
+    }
+
+    private fun stream(command: AgentCommand.Stream) {
+        streamJob?.cancel()
+        if (!command.enabled) {
+            goForeground()
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_COMPLETED) }
+            return
+        }
+        if (!device.hasCamera()) {
+            scope.launch { repository.sendResult(command.messageId, Status.STATUS_FAILED, "camera_permission_denied") }
+            return
+        }
+        goForeground(camera = true)
+        streamJob = scope.launch {
+            repository.sendResult(command.messageId, Status.STATUS_ACCEPTED)
+            val camera = CameraCapture(this@ProtectionService)
+            if (!camera.start(command.camera, command.edgePx)) {
+                camera.shutdown()
+                goForeground()
+                repository.sendResult(command.messageId, Status.STATUS_FAILED, "camera_unavailable")
+                return@launch
+            }
+            val frameIntervalMs = (MILLIS_PER_SECOND / command.fps).coerceAtLeast(MIN_FRAME_MS)
+            val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
+            var sequence = 0L
+            try {
+                while (isActive && System.currentTimeMillis() < endAt) {
+                    val started = System.currentTimeMillis()
+                    val frame = camera.capture()
+                    if (frame != null && !sendFrame(command.camera, sequence++, frame)) break
+                    val elapsed = System.currentTimeMillis() - started
+                    delay((frameIntervalMs - elapsed).coerceAtLeast(0))
+                }
+            } finally {
+                camera.stop()
+                camera.shutdown()
+                goForeground()
+            }
+        }
+    }
+
+    private suspend fun sendFrame(cameraValue: Int, sequence: Long, frame: CapturedImage): Boolean {
+        val media = MediaFrame.newBuilder()
+            .setSequence(sequence)
+            .setCapturedAtMs(System.currentTimeMillis())
+            .setCameraValue(cameraValue)
+            .setJpeg(com.google.protobuf.ByteString.copyFrom(frame.jpeg))
+            .setWidth(frame.width)
+            .setHeight(frame.height)
+            .build()
+        return repository.sendEvent(Event.newBuilder().setMediaFrame(media).build())
     }
 
     private suspend fun locate(id: ByteArray, highAccuracy: Boolean) {
@@ -360,6 +546,42 @@ class ProtectionService : Service() {
         repository.sendEvent(
             Event.newBuilder().setLocation(LocationReport.newBuilder().addLocations(Locator.toProto(fix))).build(),
         )
+        evaluateGeofences(fix)
+    }
+
+    private suspend fun setGeofences(command: AgentCommand.SetGeofences) {
+        val local = Geofencing.fromWire(command.zones)
+        val fix = locator.lastKnown()
+        val initialized = if (fix != null) Geofencing.evaluate(local, fix.latitude, fix.longitude).first else local
+        updateSettings { it.clearGeofences().addAllGeofences(initialized) }
+        repository.sendResult(command.messageId, Status.STATUS_COMPLETED)
+    }
+
+    private suspend fun evaluateGeofences(fix: Location) {
+        val zones = repository.state.value.settings.geofencesList
+        if (zones.isEmpty()) return
+        val (updated, transitions) = Geofencing.evaluate(zones, fix.latitude, fix.longitude)
+        if (updated != zones) {
+            updateSettings { it.clearGeofences().addAllGeofences(updated) }
+        }
+        for (transition in transitions) {
+            val type = if (transition.entered) {
+                Alert.Type.TYPE_GEOFENCE_ENTER
+            } else {
+                Alert.Type.TYPE_GEOFENCE_EXIT
+            }
+            val alert = Alert.newBuilder()
+                .setType(type)
+                .putDetail("id", transition.id)
+                .setLocation(Locator.toProto(fix))
+            repository.sendEvent(Event.newBuilder().setAlert(alert).build())
+            repository.log("alert.${type.name}")
+        }
+        // Leaving a zone bumps tracking to active (unless already in lost mode).
+        if (transitions.any { !it.entered } && !repository.state.value.settings.lostMode) {
+            updateSettings { it.setTrackingMode(TrackingMode.TRACKING_MODE_ACTIVE_VALUE) }
+            applyTracking()
+        }
     }
 
     private suspend fun sendStatus() {
@@ -386,6 +608,10 @@ class ProtectionService : Service() {
     companion object {
         private const val TAG = "ProtectionService"
         const val ACTION_STOP_RING = "org.bastion.mobile.STOP_RING"
+        const val ACTION_INTRUSION_PHOTO = "org.bastion.mobile.INTRUSION_PHOTO"
+
+        /** Failed unlock attempts before an intrusion photo is taken. */
+        const val INTRUSION_ATTEMPTS = 3
         private const val POLL_WAIT_S = 25
         private const val INITIAL_BACKOFF_MS = 2_000L
         private const val MAX_BACKOFF_MS = 120_000L
@@ -395,6 +621,9 @@ class ProtectionService : Service() {
         private const val ACTIVE_INTERVAL_MS = 60_000L
         private const val LOST_INTERVAL_MS = 30_000L
         private const val BEACON_TIMEOUT_MS = 4_000L
+        private const val PHOTO_EDGE_PX = 1280
+        private const val MILLIS_PER_SECOND = 1000L
+        private const val MIN_FRAME_MS = 100L
 
         fun start(context: Context, action: String? = null) {
             val intent = Intent(context, ProtectionService::class.java).setAction(action)

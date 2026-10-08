@@ -103,13 +103,56 @@ export interface ContactInput {
   email: string;
 }
 
+export type CameraChoice = "front" | "back" | "unspecified";
+
 export type CommandRequest =
   | { kind: "ring"; durationSeconds: number; flashlight: boolean; vibrate: boolean }
   | { kind: "stopRing" }
   | { kind: "locate"; highAccuracy: boolean }
   | { kind: "trackingMode"; mode: "standby" | "active" }
   | { kind: "lostMode"; enabled: boolean; contact: ContactInput | null }
-  | { kind: "status" };
+  | { kind: "status" }
+  | { kind: "capturePhoto"; camera: CameraChoice }
+  | {
+      kind: "stream";
+      enabled: boolean;
+      camera: CameraChoice;
+      fps: number;
+      edgePx: number;
+      durationSeconds: number;
+    }
+  | { kind: "audio"; enabled: boolean; durationSeconds: number };
+
+export interface PhotoView {
+  id: string;
+  camera: string;
+  trigger: string;
+  capturedMs: number;
+  hasLocation: boolean;
+}
+
+export interface GeofenceView {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusM: number;
+}
+
+/** A live stream frame pushed from the backend. */
+export interface StreamFrame {
+  deviceId: string;
+  sequence: number;
+  jpeg: string;
+}
+
+/** A live audio chunk pushed from the backend (base64 16-bit mono PCM). */
+export interface AudioChunkMsg {
+  deviceId: string;
+  sequence: number;
+  pcm: string;
+  sampleRate: number;
+}
 
 export type SensitiveRequest =
   | { kind: "lock"; contact: ContactInput | null }
@@ -178,6 +221,10 @@ export const api = {
   confirmPairing: (id: string, accept: boolean) => invoke<null>("confirm_pairing", { id, accept }),
   sendCommand: (id: string, request: CommandRequest) =>
     invoke<null>("send_command", { id, request }),
+  photos: (id: string) => invoke<PhotoView[]>("photos", { id }),
+  photo: (photoId: string) => invoke<string>("photo", { photoId }),
+  geofences: (id: string) => invoke<GeofenceView[]>("geofences", { id }),
+  setGeofences: (id: string, zones: GeofenceView[]) => invoke<null>("set_geofences", { id, zones }),
   armWipe: (id: string) => invoke<number>("arm_wipe", { id }),
   disarmWipe: (id: string) => invoke<null>("disarm_wipe", { id }),
   sendSensitive: (id: string, password: string, request: SensitiveRequest) =>
@@ -196,4 +243,14 @@ export type BackendEvent = "changed" | "attention" | "locked";
 /** Subscribes to backend push events. */
 export async function onBackend(event: BackendEvent, handler: () => void): Promise<UnlistenFn> {
   return listen(`bastion://${event}`, handler);
+}
+
+/** Subscribes to live stream frames. */
+export async function onFrame(handler: (frame: StreamFrame) => void): Promise<UnlistenFn> {
+  return listen<StreamFrame>("bastion://frame", (event) => handler(event.payload));
+}
+
+/** Subscribes to live audio chunks. */
+export async function onAudio(handler: (chunk: AudioChunkMsg) => void): Promise<UnlistenFn> {
+  return listen<AudioChunkMsg>("bastion://audio", (event) => handler(event.payload));
 }

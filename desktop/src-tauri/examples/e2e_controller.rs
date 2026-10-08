@@ -17,10 +17,13 @@
 use std::time::Duration;
 
 use bastion_crypto::vault::KdfParams;
-use bastion_desktop_lib::engine::{Action, Session};
+use bastion_desktop_lib::engine::{Action, Media, Session};
 use bastion_desktop_lib::model::{PairingState, RelaySettings};
 use bastion_desktop_lib::relay_client::RelayClient;
-use bastion_proto::v1::{Command, LocateNow, RequestStatus, Ring, StopRing, command};
+use bastion_proto::v1::{
+    AudioControl, CapturePhoto, Command, LocateNow, RequestStatus, Ring, StopRing, StreamControl,
+    capture_photo, command,
+};
 use bastion_relay::{Config, Relay};
 
 fn now() -> i64 {
@@ -77,15 +80,44 @@ async fn main() {
     println!("PAIRING_URI {uri}");
 
     let mut commanded = false;
+    let mut lock_done = false;
+    let mut photo_sent = false;
+    let mut stream_sent = false;
+    let mut audio_sent = false;
+    let mut geofences_sent = false;
+    let mut photos = 0usize;
+    let mut frames = 0usize;
+    let mut chunks = 0usize;
     let mut seen_journal = 0;
     let deadline = std::time::Instant::now() + Duration::from_secs(900);
     while std::time::Instant::now() < deadline {
         let batch = client.fetch(20).await.unwrap();
         let mut ids = Vec::new();
         for item in &batch.items {
-            let (actions, _) =
+            let (actions, _, media) =
                 session.handle_item(item.kind, &item.sender_id, &item.payload, now());
             run(&client, actions).await;
+            for m in media {
+                match m {
+                    Media::Photo { jpeg, .. } => {
+                        photos += 1;
+                        println!("PHOTO {} bytes", jpeg.len());
+                    }
+                    Media::Frame { sequence, jpeg, .. } => {
+                        frames += 1;
+                        println!("FRAME seq={sequence} {} bytes", jpeg.len());
+                    }
+                    Media::Audio {
+                        sequence,
+                        pcm,
+                        sample_rate,
+                        ..
+                    } => {
+                        chunks += 1;
+                        println!("AUDIO seq={sequence} {} bytes @{sample_rate}Hz", pcm.len());
+                    }
+                }
+            }
             ids.push(item.id);
         }
         client.ack(ids).await.unwrap();
@@ -154,12 +186,13 @@ async fn main() {
                     loc.latitude, loc.longitude, loc.accuracy_m
                 );
             }
+            let id = d.device_id.clone();
             let done = d
                 .commands
                 .iter()
                 .filter(|c| c.status == "completed")
                 .count();
-            if done == 4 && d.commands.len() == 4 {
+            if done == 4 && d.commands.len() == 4 && !lock_done {
                 // Sensitive command, counter-signed with the privileged key (PROTOCOL.md §7).
                 let seed = session
                     .data
@@ -172,14 +205,101 @@ async fn main() {
                         contact: None,
                     })),
                 };
-                let id = d.device_id.clone();
                 let action = session.command(&id, lock, Some(&pk), now()).unwrap();
                 run(&client, vec![action]).await;
-            } else if done >= 5 {
-                println!("E2E_OK all commands completed, including privileged lock");
+                lock_done = true;
+            } else if done >= 5 && !photo_sent {
+                println!("locked ok, requesting a photo");
+                let photo = Command {
+                    kind: Some(command::Kind::CapturePhoto(CapturePhoto {
+                        camera: capture_photo::Camera::Back as i32,
+                    })),
+                };
+                run(
+                    &client,
+                    vec![session.command(&id, photo, None, now()).unwrap()],
+                )
+                .await;
+                photo_sent = true;
+            } else if photos >= 1 && !stream_sent {
+                println!("photo received, starting a 10 s stream");
+                let start = Command {
+                    kind: Some(command::Kind::StreamControl(StreamControl {
+                        enabled: true,
+                        camera: capture_photo::Camera::Back as i32,
+                        max_fps: 3,
+                        max_edge_px: 480,
+                        max_duration_seconds: 10,
+                    })),
+                };
+                run(
+                    &client,
+                    vec![session.command(&id, start, None, now()).unwrap()],
+                )
+                .await;
+                stream_sent = true;
+            } else if stream_sent && frames >= 3 && !audio_sent {
+                let stop = Command {
+                    kind: Some(command::Kind::StreamControl(StreamControl {
+                        enabled: false,
+                        ..Default::default()
+                    })),
+                };
+                let listen = Command {
+                    kind: Some(command::Kind::AudioControl(AudioControl {
+                        enabled: true,
+                        max_duration_seconds: 6,
+                    })),
+                };
+                println!("stream ok, starting a 6 s audio stream");
+                run(
+                    &client,
+                    vec![
+                        session.command(&id, stop, None, now()).unwrap(),
+                        session.command(&id, listen, None, now()).unwrap(),
+                    ],
+                )
+                .await;
+                audio_sent = true;
+            } else if audio_sent && chunks >= 3 && !geofences_sent {
+                let stop = Command {
+                    kind: Some(command::Kind::AudioControl(AudioControl {
+                        enabled: false,
+                        ..Default::default()
+                    })),
+                };
+                run(
+                    &client,
+                    vec![session.command(&id, stop, None, now()).unwrap()],
+                )
+                .await;
+                println!("audio ok, setting a geofence");
+                let zone = bastion_desktop_lib::model::GeofenceDef {
+                    id: "home".to_owned(),
+                    name: "Home".to_owned(),
+                    latitude: 48.8566,
+                    longitude: 2.3522,
+                    radius_m: 150.0,
+                };
+                run(
+                    &client,
+                    vec![session.set_geofences(&id, vec![zone], now()).unwrap()],
+                )
+                .await;
+                geofences_sent = true;
+            } else if geofences_sent
+                && d.commands
+                    .iter()
+                    .any(|c| c.kind == "geofences" && c.status == "completed")
+            {
+                println!(
+                    "E2E_OK photo={photos} frames={frames} chunks={chunks} geofences=ok (lock, photo, camera, audio and geofencing all worked)"
+                );
                 return;
             }
         }
     }
-    println!("E2E_TIMEOUT");
+    println!(
+        "E2E_TIMEOUT photos={photos} frames={frames} chunks={chunks} geofences_sent={geofences_sent}"
+    );
 }
