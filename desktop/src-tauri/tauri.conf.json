@@ -55,6 +55,11 @@
       "icons/icon.png"
     ],
     "category": "Utility",
-    "licenseFile": "../../LICENSE"
+    "licenseFile": "../../LICENSE",
+    "windows": {
+      "wix": {
+        "template": "installer/main.wxs"
+      }
+    }
   }
 }

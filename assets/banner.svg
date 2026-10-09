@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="Bastion">
+  <defs>
+    <style>
+      .wm { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; fill: #ededef; font-weight: 700; letter-spacing: 10px; }
+      .tag { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; fill: #9a9aa3; letter-spacing: 2px; }
+      .acc { fill: #c9b27c; }
+    </style>
+  </defs>
+  <rect width="1200" height="300" fill="#0a0a0b"/>
+  <rect x="0" y="0" width="1200" height="4" class="acc"/>
+  <!-- shield mark -->
+  <g transform="translate(90,70) scale(0.156)">
+    <path d="M512 232 L778 425 L676 738 L348 738 L246 425 Z" fill="none" stroke="#c9b27c" stroke-width="44" stroke-linejoin="round"/>
+    <circle cx="512" cy="520" r="34" fill="#c9b27c"/>
+  </g>
+  <text x="235" y="150" class="wm" font-size="64">BASTION</text>
+  <text x="238" y="200" class="tag" font-size="20">ANTI&#8209;VOL CHIFFR&#201; DE BOUT EN BOUT &#183; ANDROID + PC &#183; SANS GOOGLE</text>
+  <text x="238" y="236" class="tag" font-size="15" fill="#62626b">localisation &#183; verrouillage &#183; effacement &#183; cam&#233;ra &#183; interphone &#183; contr&#244;le &#224; distance</text>
+</svg>
