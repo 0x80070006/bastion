@@ -1,7 +1,7 @@
 # Versions verified against Google Maven / Maven Central on 2026-10-06 (ADR-0011).
 [versions]
 agp = "9.4.1"
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 ksp = "2.3.12"
 compileSdk = "37"
 targetSdk = "37"
