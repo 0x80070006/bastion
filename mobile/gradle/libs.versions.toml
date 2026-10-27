@@ -27,7 +27,7 @@ lazysodium = "5.2.0"
 jna = "5.19.1"
 protobuf = "4.36.2"
 protobuf-plugin = "0.10.0"
-okhttp = "5.5.0"
+okhttp = "5.5.1"
 zxing = "3.5.4"
 camerax = "1.6.2"
 
