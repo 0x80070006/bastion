@@ -72,7 +72,7 @@
     const here = L.latLng(last.latitude, last.longitude);
     L.circle(here, {
       radius: Math.max(last.accuracyM, 5),
-      color: "#c9b27c",
+      color: "#3ddc97",
       weight: 1,
       fillOpacity: 0.12,
     }).addTo(layer);
@@ -80,7 +80,7 @@
       radius: 7,
       color: "#0a0a0b",
       weight: 2,
-      fillColor: "#c9b27c",
+      fillColor: "#3ddc97",
       fillOpacity: 1,
     })
       .bindTooltip(label)

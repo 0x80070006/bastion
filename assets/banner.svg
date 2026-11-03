@@ -1,19 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="Bastion">
   <defs>
     <style>
-      .wm { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; fill: #ededef; font-weight: 700; letter-spacing: 10px; }
-      .tag { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; fill: #9a9aa3; letter-spacing: 2px; }
-      .acc { fill: #c9b27c; }
+      .wm { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; fill: #e6eaed; font-weight: 700; letter-spacing: 10px; }
+      .tag { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; fill: #9aa6b0; letter-spacing: 2px; }
+      .acc { fill: #3ddc97; }
     </style>
   </defs>
-  <rect width="1200" height="300" fill="#0a0a0b"/>
+  <rect width="1200" height="300" fill="#0b0e11"/>
   <rect x="0" y="0" width="1200" height="4" class="acc"/>
-  <!-- shield mark -->
-  <g transform="translate(90,70) scale(0.156)">
-    <path d="M512 232 L778 425 L676 738 L348 738 L246 425 Z" fill="none" stroke="#c9b27c" stroke-width="44" stroke-linejoin="round"/>
-    <circle cx="512" cy="520" r="34" fill="#c9b27c"/>
-  </g>
-  <text x="235" y="150" class="wm" font-size="64">BASTION</text>
-  <text x="238" y="200" class="tag" font-size="20">ANTI&#8209;VOL CHIFFR&#201; DE BOUT EN BOUT &#183; ANDROID + PC &#183; SANS GOOGLE</text>
-  <text x="238" y="236" class="tag" font-size="15" fill="#62626b">localisation &#183; verrouillage &#183; effacement &#183; cam&#233;ra &#183; interphone &#183; contr&#244;le &#224; distance</text>
+  <!-- emblem -->
+  <path d="M162.7,80.4 L163.1,103.2 L116.6,131.5 L103.7,127.8 L92.5,124.4 L92.1,123.2 Z M176.9,80.4 L248.8,123.6 L237.5,127.4 L223.4,131.5 L176.9,103.2 Z M90.0,136.1 L115.8,145.2 L134.5,188.0 L127.4,198.8 L121.6,206.7 Z M250.0,136.1 L218.4,207.1 L213.0,199.2 L205.9,187.6 L224.2,145.2 Z M169.8,186.4 L196.4,195.1 L210.1,219.2 L170.2,207.1 L129.9,219.6 L143.2,195.5 Z" class="acc"/>
+  <text x="290" y="150" class="wm" font-size="64">BASTION</text>
+  <text x="293" y="200" class="tag" font-size="20">ANTI&#8209;VOL CHIFFR&#201; DE BOUT EN BOUT &#183; ANDROID + PC &#183; SANS GOOGLE</text>
+  <text x="293" y="236" class="tag" font-size="15" fill="#7b8792">localisation &#183; verrouillage &#183; effacement &#183; cam&#233;ra &#183; interphone &#183; contr&#244;le &#224; distance &#183; contacts &#183; appels &#183; SMS</text>
 </svg>

@@ -252,6 +252,7 @@
 
   .name {
     flex: 1;
+    text-align: left;
   }
 
   nav li button {
@@ -270,7 +271,8 @@
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
     font-size: var(--type-caption-size);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
     text-transform: uppercase;
     cursor: pointer;
   }

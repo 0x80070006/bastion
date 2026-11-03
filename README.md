@@ -8,9 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/0x80070006/bastion/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/0x80070006/bastion?include_prereleases&label=version&color=c9b27c&labelColor=0a0a0b"></a>
-  <img alt="Plateformes" src="https://img.shields.io/badge/plateformes-Android%20%C2%B7%20Windows-9a9aa3?labelColor=0a0a0b">
-  <img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-5fa37a?labelColor=0a0a0b">
+  <a href="https://github.com/0x80070006/bastion/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/0x80070006/bastion?include_prereleases&label=version&color=3ddc97&labelColor=0b0e11"></a>
+  <img alt="Plateformes" src="https://img.shields.io/badge/plateformes-Android%20%C2%B7%20Windows-9aa6b0?labelColor=0b0e11">
+  <img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-3ddc97?labelColor=0b0e11">
 </p>
 
 > *Nom de code provisoire, défini dans [`branding/product.json`](branding/product.json).*
