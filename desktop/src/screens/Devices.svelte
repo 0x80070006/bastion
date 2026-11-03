@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from "../lib/components/Button.svelte";
+  import StatusBadge from "../lib/components/StatusBadge.svelte";
   import DeviceDetailView from "./DeviceDetail.svelte";
   import PairingDialog from "./PairingDialog.svelte";
   import { api, type DeviceDetail, type DeviceSummary } from "../lib/api";
@@ -53,7 +54,14 @@
               onclick={() => (selected = d.id)}
             >
               <span class="label">{d.label}</span>
-              <span class={`state ${d.state}`}>{t(`device.state.${d.state}` as MessageKey)}</span>
+              <StatusBadge
+                tone={d.state === "active"
+                  ? "ok"
+                  : d.state === "pendingSas" || d.state === "awaitingPhone"
+                    ? "warn"
+                    : "off"}
+                label={t(`device.state.${d.state}` as MessageKey)}
+              />
               <span class="seen">
                 {d.lastSeenMs ? relativeTime(t, d.lastSeenMs, now) : t("device.neverSeen")}
               </span>
@@ -143,19 +151,10 @@
     font-weight: var(--type-label-weight);
   }
 
-  .state,
   .seen {
+    font-family: var(--font-mono);
     font-size: var(--type-caption-size);
     color: var(--color-text-secondary);
-  }
-
-  .state.active {
-    color: var(--color-success);
-  }
-
-  .state.pendingSas,
-  .state.awaitingPhone {
-    color: var(--color-warning);
   }
 
   .content {

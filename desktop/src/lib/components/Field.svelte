@@ -71,7 +71,7 @@
 
   input,
   textarea {
-    min-height: 40px;
+    min-height: calc(var(--control-h, 36px) + 4px);
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-sm);
     border: var(--border-width) solid var(--color-border-active);

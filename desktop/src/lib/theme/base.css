@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-@import "@fontsource/inter-tight/400.css";
-@import "@fontsource/inter-tight/500.css";
-@import "@fontsource/inter-tight/600.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "./tokens.css";
 
@@ -9,6 +9,48 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/*
+ * Desktop "tactical operations console" theme. It lives here, not in the shared tokens, so the
+ * phone UI is untouched. Near-black tinted ground, three close surface levels split by 1px
+ * borders (no shadows), ONE accent (phosphor green) for the primary action and the active state,
+ * semantic colours reserved for status. Spacing stays on the 4/8 px grid of tokens.css.
+ */
+:root {
+  --color-background: #0b0e11;
+  --color-surface: #10151a;
+  --color-surface-raised: #161c22;
+  --color-border: #1f272e;
+  --color-border-active: #2d3842;
+  --color-text-primary: #e6eaed;
+  --color-text-secondary: #9aa6b0;
+  --color-text-tertiary: #7b8792;
+  --color-accent: #3ddc97;
+  --color-on-accent: #04130c;
+  /* Status only. OK shares the accent hue: "active" and "healthy" are the same state. */
+  --color-success: #3ddc97;
+  --color-warning: #e5a00d;
+  --color-danger: #f0524f;
+  --color-inactive: #6b7782;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Density: comfortable by default, `data-density="compact"` tightens controls and rows. */
+  --control-h: 36px;
+  --row-pad: 12px;
+  --grid-size: 32px;
+}
+
+:root[data-density="compact"] {
+  --control-h: 28px;
+  --row-pad: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --type-body-size: 14px;
+  --type-body-line-height: 20px;
 }
 
 html,
@@ -25,6 +67,11 @@ body {
 
 #app {
   height: 100%;
+  /* Fine background grid: orientation only, kept barely above the ground colour. */
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 2.5%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 2.5%) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
 }
 
 :focus-visible {
@@ -37,27 +84,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * Desktop "command console" treatment. Kept here (not in the shared tokens) so the phone UI is
- * untouched. Only properties the screens don't set themselves are overridden, so it layers on
- * cleanly: squared geometry, monospace uppercase section headers, restrained console chrome.
- */
-:root {
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 3px;
-}
-
+/* Section labels: small spaced capitals in the data font. */
 h1,
 h2,
 h3 {
   font-family: var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
 }
 
 h1 {
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
+}
+
+/* Hairline rule under each section label. */
+h2 {
+  padding-bottom: var(--space-xxs);
+  border-bottom: var(--border-width) solid var(--color-border);
 }
 
 ::selection {
