@@ -130,6 +130,17 @@ export const en: Messages = {
   "camera.talkStart": "Talk (intercom)",
   "camera.talkStop": "End intercom",
   "camera.talking": "Intercom live — they can hear you",
+  "camera.waiting": "Photo requested, waiting for the phone…",
+  "camera.noAnswer":
+    "No answer from the phone: check it is reachable and the Bastion app is running.",
+  "camera.err.camera_permission_denied": "Camera permission is off on the phone.",
+  "camera.err.camera_unavailable":
+    "The phone's camera could not take the photo (busy or blocked by Android).",
+  "camera.err.camera_busy": "The camera is already in use (live stream): stop it and try again.",
+  "camera.err.relay_unreachable":
+    "Photo taken, but the phone could not send it (relay unreachable).",
+  "camera.err.internal_error": "The phone hit an internal error while taking the photo.",
+  "camera.err.generic": "The phone refused the photo ({reason}).",
   "camera.micDenied": "Microphone access was refused on this computer.",
 
   "remote.title": "Remote control",
@@ -169,6 +180,46 @@ export const en: Messages = {
   "command.intercom": "Intercom",
   "command.contacts": "Contacts",
   "command.call": "Call",
+  "command.sms": "SMS",
+  "command.smsList": "Read SMS",
+
+  "tabs.overview": "Overview",
+  "tabs.control": "Control",
+  "tabs.media": "Media",
+  "tabs.comms": "Communications",
+  "tabs.security": "Security",
+  "tabs.aria": "Phone sections",
+
+  "sms.title": "Messages",
+  "sms.note":
+    "Texts are read on demand from the phone and kept in memory only. Sending uses the phone's SIM.",
+  "sms.load": "Load conversations",
+  "sms.new": "New",
+  "sms.newNumber": "Recipient number",
+  "sms.loading": "Reading messages…",
+  "sms.idle": "Not loaded. Allow SMS on the phone, then load.",
+  "sms.empty": "No conversation.",
+  "sms.emptyThread": "No message with this number.",
+  "sms.pick": "Pick a conversation or type a number.",
+  "sms.you": "You:",
+  "sms.compose": "Your message",
+  "sms.send": "Send",
+  "sms.err.sms_permission_denied": "SMS permission is off on the phone.",
+
+  "phone.pcAudio": "Sound on the PC",
+  "phone.pcAudioHint":
+    "The phone switches to speaker; its microphone picks up the caller and the PC plays it. Limited quality, echo possible: a headset is recommended.",
+  "phone.pcAudioDenied": "PC microphone denied: sound stays on the phone.",
+  "phone.pcAudioNoMic": "No microphone found on this PC: sound stays on the phone.",
+  "phone.pcAudioError": "Could not open the PC audio: sound stays on the phone.",
+  "phone.pcAudioPhoneMic": "Microphone permission is off on the phone (turn it on in the app).",
+  "phone.pcAudioPhoneBusy": "The phone microphone is busy or blocked by Android.",
+  "phone.pcAudioSend": "The request could not be sent to the phone.",
+  "phone.pcAudioNoAnswer": "The phone did not answer in time.",
+  "phone.pcAudioFailed": "Sound on the PC failed ({reason}).",
+  "phone.pcAudioSilent":
+    "No sound received: Android mutes the phone microphone during a call, so the caller's voice cannot be captured. Use the phone speaker or a headset.",
+  "phone.pcAudioLive": "Sound on the PC is live",
 
   "phone.title": "Contacts and calls",
   "phone.note":

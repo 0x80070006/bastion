@@ -13,6 +13,7 @@ import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import java.util.concurrent.Executors
 import org.bastion.protocol.v1.CallControl
 import org.bastion.protocol.v1.CallState
 import org.bastion.protocol.v1.Contact
@@ -110,11 +111,17 @@ class CallController(
 ) {
     private val telecom = context.getSystemService<TelecomManager>()
     private val telephony = context.getSystemService<TelephonyManager>()
+    // Call-state callbacks read the address book: keep that off the app's main thread.
+    private val callbackExecutor = Executors.newSingleThreadExecutor()
     private var legacyListener: PhoneStateListener? = null
     private var modernCallback: TelephonyCallback? = null
-    private var speaker = false
-    private var lastNumber = ""
-    private var phase = CallState.State.STATE_IDLE
+
+    // Written from the telephony callback thread and from command coroutines.
+    @Volatile private var speaker = false
+
+    @Volatile private var lastNumber = ""
+
+    @Volatile private var phase = CallState.State.STATE_IDLE
 
     private fun granted(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -129,12 +136,14 @@ class CallController(
             val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
                 override fun onCallStateChanged(state: Int) = changed(state)
             }
-            runCatching { manager.registerTelephonyCallback(context.mainExecutor, callback) }
+            runCatching { manager.registerTelephonyCallback(callbackExecutor, callback) }
                 .onSuccess { modernCallback = callback }
         } else {
             val listener = object : PhoneStateListener() {
                 @Deprecated("Deprecated in Java")
-                override fun onCallStateChanged(state: Int, phoneNumber: String?) = changed(state)
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    callbackExecutor.execute { changed(state) }
+                }
             }
             manager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
             legacyListener = listener
@@ -150,17 +159,20 @@ class CallController(
         }
         modernCallback = null
         legacyListener = null
+        callbackExecutor.shutdown()
     }
 
     private fun changed(state: Int) {
-        phase = when (state) {
-            TelephonyManager.CALL_STATE_RINGING -> CallState.State.STATE_RINGING
-            TelephonyManager.CALL_STATE_OFFHOOK -> CallState.State.STATE_ACTIVE
-            else -> CallState.State.STATE_IDLE
-        }
-        if (phase == CallState.State.STATE_IDLE) {
-            speaker = false
-            lastNumber = ""
+        synchronized(this) {
+            phase = when (state) {
+                TelephonyManager.CALL_STATE_RINGING -> CallState.State.STATE_RINGING
+                TelephonyManager.CALL_STATE_OFFHOOK -> CallState.State.STATE_ACTIVE
+                else -> CallState.State.STATE_IDLE
+            }
+            if (phase == CallState.State.STATE_IDLE) {
+                speaker = false
+                lastNumber = ""
+            }
         }
         report(null)
     }
@@ -186,7 +198,10 @@ class CallController(
         lastNumber = number
         runCatching { manager.placeCall(Uri.fromParts("tel", number, null), null) }
             .onSuccess {
-                phase = CallState.State.STATE_DIALING
+                // The telephony callback may already have said OFFHOOK: never step back to DIALING.
+                synchronized(this) {
+                    if (phase == CallState.State.STATE_IDLE) phase = CallState.State.STATE_DIALING
+                }
                 report(null)
             }
             .onFailure {

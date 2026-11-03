@@ -135,6 +135,14 @@ class RelayClient(baseUrl: String, pin: ByteArray, private val sodium: Sodium, p
             }
         }
 
+    /**
+     * Aborts every request in flight. Used when the network changes (VPN reconnect, a call ending):
+     * a socket opened on the old network would otherwise hang until the read timeout.
+     */
+    fun cancelInFlight() {
+        http.dispatcher.cancelAll()
+    }
+
     suspend fun enroll(request: EnrollRequest): EnrollResponse =
         EnrollResponse.parseFrom(call("POST", "/v1/enroll", request.toByteArray(), signed = false))
 

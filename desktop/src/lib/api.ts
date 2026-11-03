@@ -132,7 +132,27 @@ export type CommandRequest =
     }
   | { kind: "intercom"; enabled: boolean; durationSeconds: number }
   | { kind: "contacts"; query: string; offset: number }
-  | { kind: "call"; action: CallAction; number: string };
+  | { kind: "call"; action: CallAction; number: string }
+  | { kind: "smsSend"; to: string; body: string }
+  | { kind: "smsList"; peer: string };
+
+/** One text message, held in memory only. */
+export interface SmsMessage {
+  address: string;
+  name: string;
+  body: string;
+  atMs: number;
+  outgoing: boolean;
+}
+
+/** A page of text messages pushed from the backend (or one live incoming message). */
+export interface SmsPage {
+  deviceId: string;
+  /** Thread this answers; empty for the conversation list. */
+  peer: string;
+  incoming: boolean;
+  messages: SmsMessage[];
+}
 
 export type CallAction = "dial" | "answer" | "hangup" | "speakerOn" | "speakerOff";
 
@@ -325,6 +345,11 @@ export async function onContacts(handler: (page: ContactsPage) => void): Promise
   return listen<ContactsPage>("bastion://contacts", (event) => handler(event.payload));
 }
 
+/** Subscribes to text messages read from, or received on, the phone. */
+export async function onSms(handler: (page: SmsPage) => void): Promise<UnlistenFn> {
+  return listen<SmsPage>("bastion://sms", (event) => handler(event.payload));
+}
+
 /** Subscribes to the phone's call state. */
 export async function onCall(handler: (call: CallState) => void): Promise<UnlistenFn> {
   return listen<CallState>("bastion://call", (event) => handler(event.payload));
@@ -333,4 +358,53 @@ export async function onCall(handler: (call: CallState) => void): Promise<Unlist
 /** Subscribes to live screen-mirror frames. */
 export async function onScreen(handler: (frame: ScreenFrame) => void): Promise<UnlistenFn> {
   return listen<ScreenFrame>("bastion://screen", (event) => handler(event.payload));
+}
+
+/** The phone's answer to one command. */
+export interface CommandOutcome {
+  /** `completed`, `accepted`, `failed`, `rejected`, `unsupported`, `cancelled` or `timeout`. */
+  status: string;
+  /** Machine-readable reason, e.g. `camera_unavailable`; empty on success. */
+  reason: string;
+}
+
+const PENDING = new Set(["sent", "unknown"]);
+const POLL_MS = 600;
+/** After `accepted`, a long-running command may still fail a moment later (microphone refused). */
+const SETTLE_MS = 1500;
+
+/**
+ * Waits for the phone to answer the newest command of `kind` sent at or after `sinceMs`. Commands
+ * are fire-and-forget on the wire, so a refusal (permission off, camera busy) only shows up here.
+ */
+export async function awaitCommand(
+  deviceId: string,
+  kind: string,
+  sinceMs: number,
+  timeoutMs = 15_000,
+): Promise<CommandOutcome> {
+  const deadline = Date.now() + timeoutMs;
+  const latest = async (): Promise<CommandOutcome | undefined> => {
+    const detail = await api.device(deviceId);
+    const match = detail.commands
+      .filter((c) => c.kind === kind && c.sentMs >= sinceMs - 1000)
+      .sort((a, b) => b.sentMs - a.sentMs)[0];
+    return match && !PENDING.has(match.status)
+      ? { status: match.status, reason: match.reason }
+      : undefined;
+  };
+  while (Date.now() < deadline) {
+    try {
+      const outcome = await latest();
+      if (outcome?.status === "accepted") {
+        await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+        return (await latest().catch(() => undefined)) ?? outcome;
+      }
+      if (outcome) return outcome;
+    } catch {
+      /* transient: try again until the deadline */
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+  return { status: "timeout", reason: "" };
 }

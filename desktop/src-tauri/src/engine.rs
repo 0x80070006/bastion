@@ -148,15 +148,59 @@ pub enum Media {
         /// Machine-readable refusal reason, empty on success.
         error: String,
     },
+    /// A page of text messages, or one that just arrived, held in memory only.
+    Sms {
+        /// Device that sent it.
+        device_id: Vec<u8>,
+        /// Peer of the thread this answers; empty for the conversation list.
+        peer: String,
+        /// The page is a single live message, not an answer to a request.
+        incoming: bool,
+        /// Messages, newest first.
+        messages: Vec<SmsRow>,
+    },
+}
+
+/// One text message as shown to the operator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmsRow {
+    /// Remote number.
+    pub address: String,
+    /// Contact name, empty when unknown.
+    pub name: String,
+    /// Plain text.
+    pub body: String,
+    /// Message time, Unix epoch milliseconds.
+    pub at_ms: i64,
+    /// Sent from the phone rather than received.
+    pub outgoing: bool,
 }
 
 const MAX_CONTACTS_PER_PAGE: usize = 200;
+const MAX_SMS_PER_PAGE: usize = 50;
+const MAX_SMS_CHARS: usize = 1000;
 const MAX_NUMBERS_PER_CONTACT: usize = 5;
 const MAX_NAME_CHARS: usize = 128;
 const MAX_NUMBER_CHARS: usize = 32;
 
 fn truncated(text: &str, max: usize) -> String {
     text.chars().filter(|c| !c.is_control()).take(max).collect()
+}
+
+fn sms_row(message: &bastion_proto::v1::SmsMessage) -> SmsRow {
+    SmsRow {
+        address: truncated(&message.address, MAX_NUMBER_CHARS),
+        name: truncated(&message.name, MAX_NAME_CHARS),
+        // Line breaks are kept: they are part of a message.
+        body: message
+            .body
+            .chars()
+            .filter(|c| !c.is_control() || *c == '\n')
+            .take(MAX_SMS_CHARS)
+            .collect(),
+        at_ms: message.at_ms,
+        outgoing: message.outgoing,
+    }
 }
 
 struct PendingInvite {
@@ -203,6 +247,8 @@ pub fn command_kind(command: &Command) -> &'static str {
         Some(command::Kind::AudioPlay(_)) => "audioPlay",
         Some(command::Kind::ContactsRequest(_)) => "contacts",
         Some(command::Kind::CallControl(_)) => "call",
+        Some(command::Kind::SmsSend(_)) => "sms",
+        Some(command::Kind::SmsList(_)) => "smsList",
         None => "unknown",
     }
 }
@@ -791,6 +837,33 @@ impl Session {
                     speaker: call.speaker,
                     error: truncated(&call.error, 48),
                 });
+                return notices;
+            }
+            Some(event::Kind::SmsPage(page)) => {
+                let device_id = self.data.devices[index].device_id.clone();
+                self.media.push(Media::Sms {
+                    device_id,
+                    peer: truncated(&page.peer, MAX_NUMBER_CHARS),
+                    incoming: false,
+                    messages: page
+                        .messages
+                        .iter()
+                        .take(MAX_SMS_PER_PAGE)
+                        .map(sms_row)
+                        .collect(),
+                });
+                return notices;
+            }
+            Some(event::Kind::SmsReceived(received)) => {
+                if let Some(message) = &received.message {
+                    let device_id = self.data.devices[index].device_id.clone();
+                    self.media.push(Media::Sms {
+                        device_id,
+                        peer: String::new(),
+                        incoming: true,
+                        messages: vec![sms_row(message)],
+                    });
+                }
                 return notices;
             }
             None => return notices,

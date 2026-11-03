@@ -84,7 +84,7 @@
       <li>{t("pairing.step2", { seconds: remaining })}</li>
     </ol>
     {#if invite && remaining > 0}
-      <img class="qr" src={invite.qrDataUrl} alt={t("pairing.title")} width="320" height="320" />
+      <img class="qr" src={invite.qrDataUrl} alt={t("pairing.title")} width="440" height="440" />
       <p class="caption">{t("pairing.endpoint", { endpoint: invite.endpoint })}</p>
       <p class="caption warn">{t("pairing.private")}</p>
       <p class="caption" aria-live="polite">{t("pairing.waiting")}</p>
@@ -116,7 +116,10 @@
   .qr {
     display: block;
     margin: 0 auto var(--space-sm);
-    border-radius: var(--radius-md);
+    max-width: 100%;
+    height: auto;
+    background: #fff;
+    image-rendering: pixelated;
   }
 
   .sas {

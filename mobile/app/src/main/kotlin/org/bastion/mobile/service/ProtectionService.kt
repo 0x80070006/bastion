@@ -9,6 +9,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -17,14 +19,21 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.bastion.core.agent.AgentCommand
 import org.bastion.core.agent.Geofencing
@@ -46,6 +55,7 @@ import org.bastion.protocol.v1.MediaFrame
 import org.bastion.protocol.v1.PhotoReport
 import org.bastion.protocol.v1.RemoteInput
 import org.bastion.protocol.v1.ScreenFrame
+import org.bastion.protocol.v1.SmsReceived
 import org.bastion.protocol.v1.StatusReport
 import org.bastion.protocol.v1.TrackingMode
 
@@ -60,12 +70,24 @@ class ProtectionService : Service() {
 
     @Inject lateinit var agent: PhoneAgent
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            CoroutineExceptionHandler { _, error -> Log.w(TAG, "uncaught: ${error.javaClass.simpleName}") },
+    )
+
+    // The camera is a single shared resource: captures and streams take it one at a time instead of
+    // closing each other's session.
+    private val cameraLock = Mutex()
+
+    // Wakes the relay loop right away (network change, call ended) instead of waiting out a backoff.
+    private val reconnect = Channel<Unit>(Channel.CONFLATED)
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private lateinit var device: DeviceState
     private lateinit var locator: Locator
     private lateinit var alarm: Alarm
     private lateinit var contactsReader: ContactsReader
     private lateinit var calls: CallController
+    private lateinit var sms: SmsController
     private var loop: Job? = null
     private var periodic: Job? = null
     private var streamJob: Job? = null
@@ -96,6 +118,25 @@ class ProtectionService : Service() {
         }
     }
 
+    // Live incoming texts, forwarded to the paired controller only (system-only broadcast).
+    private val smsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!::sms.isInitialized || !sms.canRead()) return
+            val parts = android.provider.Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
+            val first = parts.firstOrNull() ?: return
+            val body = parts.joinToString("") { it.messageBody.orEmpty() }
+            val address = first.originatingAddress.orEmpty()
+            val atMs = first.timestampMillis
+            scope.launch {
+                // The contact lookup is a content-provider query: never on the receiver's main thread.
+                val message = sms.incoming(address, body, atMs)
+                repository.sendEvent(
+                    Event.newBuilder().setSmsReceived(SmsReceived.newBuilder().setMessage(message)).build(),
+                )
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -106,9 +147,20 @@ class ProtectionService : Service() {
         alarm = Alarm(this)
         contactsReader = ContactsReader(this)
         calls = CallController(this, contactsReader) { state ->
+            if (state.state == org.bastion.protocol.v1.CallState.State.STATE_IDLE) wakeRelayLoop()
             scope.launch { repository.sendEvent(Event.newBuilder().setCallState(state).build()) }
         }
+        sms = SmsController(this, contactsReader)
         calls.start()
+        watchNetwork()
+        ContextCompat.registerReceiver(
+            this,
+            smsReceiver,
+            IntentFilter(android.provider.Telephony.Sms.Intents.SMS_RECEIVED_ACTION),
+            android.Manifest.permission.BROADCAST_SMS,
+            null,
+            ContextCompat.RECEIVER_EXPORTED,
+        )
         ContextCompat.registerReceiver(
             this,
             systemEvents,
@@ -145,6 +197,9 @@ class ProtectionService : Service() {
 
     override fun onDestroy() {
         unregisterReceiver(systemEvents)
+        unregisterReceiver(smsReceiver)
+        networkCallback?.let { runCatching { getSystemService<ConnectivityManager>()?.unregisterNetworkCallback(it) } }
+        networkCallback = null
         calls.stop()
         alarm.stop()
         locator.stopTracking()
@@ -210,7 +265,14 @@ class ProtectionService : Service() {
                 repository.reportRelay(true)
                 unauthorized = 0
                 backoffMs = INITIAL_BACKOFF_MS
-                process(batch.itemsList)
+                try {
+                    process(batch.itemsList)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // A command that cannot be processed must not be redelivered forever, nor stop the loop.
+                    Log.w(TAG, "processing failed: ${e.javaClass.simpleName}")
+                }
                 client.ack(batch.itemsList.map { it.id })
             } catch (_: RelayException.Unauthorized) {
                 // The relay forgot this phone: the controller unpaired it.
@@ -224,10 +286,40 @@ class ProtectionService : Service() {
             } catch (e: RelayException) {
                 Log.i(TAG, "relay error: ${e.javaClass.simpleName}")
                 repository.reportRelay(false)
+                // Wait out the backoff, but wake at once when the network changes or a call ends.
+                withTimeoutOrNull(backoffMs) { reconnect.receive() }
+                backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "relay loop error: ${e.javaClass.simpleName}")
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
             }
         }
+    }
+
+    /** Wakes the relay loop at once so it does not sit out a backoff. Healthy requests are left alone. */
+    private fun wakeRelayLoop() {
+        reconnect.trySend(Unit)
+    }
+
+    /** The network changed: requests opened on the old one would hang, so drop them and reconnect now. */
+    private fun networkChanged() {
+        scope.launch { runCatching { repository.client()?.cancelInFlight() } }
+        wakeRelayLoop()
+    }
+
+    private fun watchNetwork() {
+        val manager = getSystemService<ConnectivityManager>() ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = networkChanged()
+
+            override fun onLost(network: Network) = networkChanged()
+        }
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+            .onSuccess { networkCallback = callback }
+            .onFailure { Log.w(TAG, "network callback not registered: ${it.javaClass.simpleName}") }
     }
 
     private fun onActivated() {
@@ -278,7 +370,18 @@ class ProtectionService : Service() {
                 repository.forget(revokeOnRelay = false)
                 return
             }
-            received.commands.forEach { command -> scope.launch { execute(command) } }
+            received.commands.forEach { command ->
+                scope.launch {
+                    try {
+                        execute(command)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "command failed: ${e.javaClass.simpleName}")
+                        repository.sendResult(command.messageId, Status.STATUS_FAILED, "internal_error")
+                    }
+                }
+            }
         }
     }
 
@@ -346,6 +449,25 @@ class ProtectionService : Service() {
             is AgentCommand.AudioPlay -> playback?.play(command.pcm, command.sampleRate)
 
             is AgentCommand.Contacts -> contacts(command)
+
+            is AgentCommand.SmsSend -> {
+                val failure = sms.send(command.to, command.body)
+                repository.sendResult(
+                    command.messageId,
+                    if (failure == null) Status.STATUS_COMPLETED else Status.STATUS_FAILED,
+                    failure.orEmpty(),
+                )
+            }
+
+            is AgentCommand.SmsList -> {
+                val page = sms.page(command.peer, command.limit)
+                if (page == null) {
+                    repository.sendResult(command.messageId, Status.STATUS_FAILED, "sms_permission_denied")
+                } else {
+                    repository.sendEvent(Event.newBuilder().setSmsPage(page).build())
+                    repository.sendResult(command.messageId, Status.STATUS_COMPLETED)
+                }
+            }
 
             is AgentCommand.Call -> {
                 calls.start()
@@ -507,21 +629,30 @@ class ProtectionService : Service() {
         return repository.sendEvent(Event.newBuilder().setAudioChunk(audio).build())
     }
 
+    /** Waits for the camera for at most [CAMERA_WAIT_MS]. Returns false if another user kept it. */
+    private suspend fun acquireCamera(): Boolean = withTimeoutOrNull(CAMERA_WAIT_MS) {
+        cameraLock.lock()
+        true
+    } ?: false
+
     /** Captures and sends one photo. `commandId` is null for an automatic intrusion photo. */
     private suspend fun capturePhoto(commandId: ByteArray?, cameraValue: Int, trigger: PhotoReport.Trigger) {
         if (!device.hasCamera()) {
             commandId?.let { repository.sendResult(it, Status.STATUS_FAILED, "camera_permission_denied") }
             return
         }
-        goForeground(camera = true)
-        val camera = CameraCapture(this)
-        val image = try {
-            if (camera.start(cameraValue, PHOTO_EDGE_PX)) camera.capture() else null
-        } finally {
-            camera.stop()
-            camera.shutdown()
+        // One camera user at a time: a second request waits for the first instead of closing its session.
+        // Only the wait is time-limited; the capture itself is bounded by its own attempts, so a timeout
+        // can never cancel it half-way and leave the camera bound.
+        if (!acquireCamera()) {
+            commandId?.let { repository.sendResult(it, Status.STATUS_FAILED, "camera_busy") }
+            return
         }
-        goForeground()
+        val image = try {
+            shoot(cameraValue)
+        } finally {
+            cameraLock.unlock()
+        }
         if (image == null) {
             commandId?.let { repository.sendResult(it, Status.STATUS_FAILED, "camera_unavailable") }
             return
@@ -536,8 +667,37 @@ class ProtectionService : Service() {
                 locator.lastKnown()?.let { setLocation(Locator.toProto(it)) }
             }
             .build()
-        repository.sendEvent(Event.newBuilder().setPhoto(report).build())
-        commandId?.let { repository.sendResult(it, Status.STATUS_COMPLETED) }
+        val sent = repository.sendEvent(Event.newBuilder().setPhoto(report).build())
+        commandId?.let {
+            val status = if (sent) Status.STATUS_COMPLETED else Status.STATUS_FAILED
+            repository.sendResult(it, status, if (sent) "" else "relay_unreachable")
+        }
+    }
+
+    /** Opens the camera, takes one photo (retrying while the camera warms up) and closes it again. */
+    private suspend fun shoot(cameraValue: Int): CapturedImage? {
+        goForeground(camera = true)
+        try {
+            repeat(CAPTURE_ATTEMPTS) {
+                val camera = CameraCapture(this)
+                val image = try {
+                    if (camera.start(cameraValue, PHOTO_EDGE_PX)) camera.capture() else null
+                } finally {
+                    release(camera)
+                }
+                if (image != null) return image
+                delay(CAPTURE_RETRY_MS)
+            }
+            return null
+        } finally {
+            goForeground()
+        }
+    }
+
+    /** Unbinds and frees a camera even when the calling coroutine is being cancelled. */
+    private suspend fun release(camera: CameraCapture) = withContext(NonCancellable) {
+        camera.stop()
+        camera.shutdown()
     }
 
     private fun stream(command: AgentCommand.Stream) {
@@ -554,29 +714,41 @@ class ProtectionService : Service() {
         goForeground(camera = true)
         streamJob = scope.launch {
             repository.sendResult(command.messageId, Status.STATUS_ACCEPTED)
-            val camera = CameraCapture(this@ProtectionService)
-            if (!camera.start(command.camera, command.edgePx)) {
-                camera.shutdown()
+            // The previous stream (if any) is still releasing the camera: wait for it, do not fail.
+            if (!acquireCamera()) {
                 goForeground()
-                repository.sendResult(command.messageId, Status.STATUS_FAILED, "camera_unavailable")
+                repository.sendResult(command.messageId, Status.STATUS_FAILED, "camera_busy")
                 return@launch
             }
-            val frameIntervalMs = (MILLIS_PER_SECOND / command.fps).coerceAtLeast(MIN_FRAME_MS)
-            val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
-            var sequence = 0L
             try {
-                while (isActive && System.currentTimeMillis() < endAt) {
-                    val started = System.currentTimeMillis()
-                    val frame = camera.capture()
-                    if (frame != null && !sendFrame(command.camera, sequence++, frame)) break
-                    val elapsed = System.currentTimeMillis() - started
-                    delay((frameIntervalMs - elapsed).coerceAtLeast(0))
-                }
+                streamFrames(command)
             } finally {
-                camera.stop()
-                camera.shutdown()
                 goForeground()
+                cameraLock.unlock()
             }
+        }
+    }
+
+    private suspend fun streamFrames(command: AgentCommand.Stream) {
+        val camera = CameraCapture(this@ProtectionService)
+        if (!camera.start(command.camera, command.edgePx)) {
+            release(camera)
+            repository.sendResult(command.messageId, Status.STATUS_FAILED, "camera_unavailable")
+            return
+        }
+        val frameIntervalMs = (MILLIS_PER_SECOND / command.fps).coerceAtLeast(MIN_FRAME_MS)
+        val endAt = System.currentTimeMillis() + command.durationSeconds * MILLIS_PER_SECOND
+        var sequence = 0L
+        try {
+            while (currentCoroutineContext().isActive && System.currentTimeMillis() < endAt) {
+                val started = System.currentTimeMillis()
+                val frame = camera.capture()
+                if (frame != null && !sendFrame(command.camera, sequence++, frame)) break
+                val elapsed = System.currentTimeMillis() - started
+                delay((frameIntervalMs - elapsed).coerceAtLeast(0))
+            }
+        } finally {
+            release(camera)
         }
     }
 
@@ -758,8 +930,11 @@ class ProtectionService : Service() {
         /** Failed unlock attempts before an intrusion photo is taken. */
         const val INTRUSION_ATTEMPTS = 3
         private const val POLL_WAIT_S = 25
+        private const val CAMERA_WAIT_MS = 20_000L
+        private const val CAPTURE_ATTEMPTS = 3
+        private const val CAPTURE_RETRY_MS = 600L
         private const val INITIAL_BACKOFF_MS = 2_000L
-        private const val MAX_BACKOFF_MS = 120_000L
+        private const val MAX_BACKOFF_MS = 15_000L
         private const val MAX_UNAUTHORIZED = 3
         private const val STATUS_PERIOD_MS = 30 * 60_000L
         private const val STANDBY_INTERVAL_MS = 30 * 60_000L

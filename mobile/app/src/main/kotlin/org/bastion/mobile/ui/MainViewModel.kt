@@ -10,7 +10,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.bastion.core.agent.InviteParse
@@ -44,7 +46,15 @@ class MainViewModel @Inject constructor(
     private val _pairing = MutableStateFlow<PairingUiState>(PairingUiState.Idle)
     val pairing: StateFlow<PairingUiState> = _pairing.asStateFlow()
 
-    val home: StateFlow<HomeState> = combine(repository.state, repository.relayOk, refresh) { state, relayOk, _ ->
+    // Re-reads the live system state every few seconds so the circuit and switches never go stale.
+    private val ticker = flow {
+        while (true) {
+            emit(Unit)
+            delay(TICK_MS)
+        }
+    }
+
+    val home: StateFlow<HomeState> = combine(repository.state, repository.relayOk, refresh, ticker) { state, relayOk, _, _ ->
         when {
             !agent.isPaired(state) -> HomeState.Unpaired
 
@@ -64,6 +74,11 @@ class MainViewModel @Inject constructor(
                     active = true,
                     lostMode = state.settings.lostMode,
                     health = device.health(relayOk),
+                    capabilities = device.capabilities(),
+                    connections = device.connections(
+                        relayOk,
+                        controllerRecent = System.currentTimeMillis() - state.pairing.lastContactMs < RECENT_MS,
+                    ),
                 ),
             )
         }
@@ -124,5 +139,7 @@ class MainViewModel @Inject constructor(
 
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
+        const val TICK_MS = 4_000L
+        const val RECENT_MS = 3 * 60_000L
     }
 }

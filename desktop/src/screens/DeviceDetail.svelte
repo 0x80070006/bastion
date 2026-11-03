@@ -1,10 +1,13 @@
 <script lang="ts">
   import Button from "../lib/components/Button.svelte";
   import MapView from "../lib/components/MapView.svelte";
+  import StatusBadge from "../lib/components/StatusBadge.svelte";
+  import Tabs from "../lib/components/Tabs.svelte";
   import ActionDialogs, { type DialogKind } from "./ActionDialogs.svelte";
   import CameraPanel from "./CameraPanel.svelte";
   import ScreenPanel from "./ScreenPanel.svelte";
   import PhonePanel from "./PhonePanel.svelte";
+  import MessagesPanel from "./MessagesPanel.svelte";
   import {
     api,
     errorCode,
@@ -27,6 +30,18 @@
   let feedback = $state("");
   let feedbackError = $state(false);
   let busy = $state(false);
+
+  type TabId = "overview" | "control" | "media" | "comms" | "security";
+  let tab: TabId = $state("overview");
+  const tabs = $derived<
+    { id: TabId; label: string; icon: "overview" | "control" | "media" | "comms" | "security" }[]
+  >([
+    { id: "overview", label: t("tabs.overview"), icon: "overview" },
+    { id: "control", label: t("tabs.control"), icon: "control" },
+    { id: "media", label: t("tabs.media"), icon: "media" },
+    { id: "comms", label: t("tabs.comms"), icon: "comms" },
+    { id: "security", label: t("tabs.security"), icon: "security" },
+  ]);
 
   const device = $derived(detail.summary);
   const status = $derived(device.status);
@@ -94,7 +109,14 @@
     <div>
       <h1 id="device-title">{device.label}</h1>
       <p class="meta">
-        <span class={`state ${device.state}`}>{t(key(`device.state.${device.state}`))}</span>
+        <StatusBadge
+          tone={device.state === "active"
+            ? "ok"
+            : device.state === "pendingSas" || device.state === "awaitingPhone"
+              ? "warn"
+              : "off"}
+          label={t(key(`device.state.${device.state}`))}
+        />
         ·
         {device.lastSeenMs
           ? t("device.lastSeen", { when: relativeTime(t, device.lastSeenMs, now) })
@@ -103,198 +125,247 @@
     </div>
   </header>
 
-  <div class="grid">
-    <div class="map-area">
-      {#if !onlineMap}
-        <p class="placeholder">{t("device.mapDisabled")}</p>
-      {:else}
-        <MapView
-          points={detail.locations}
-          label={device.label}
-          {zones}
-          editing={editingZones}
-          onMapClick={addZone}
-        />
-        {#if last}
-          <p class="mono coords">
-            {last.latitude.toFixed(5)}, {last.longitude.toFixed(5)}
-            · {t("device.accuracy", { meters: Math.round(last.accuracyM) })}
-            · {dateTime(locale, last.fixTimeMs)}
-            · {t("device.positions", { count: detail.locations.length })}
-          </p>
-        {:else}
-          <p class="coords">{t("device.noLocation")}</p>
-        {/if}
-        <div class="zones">
-          <div class="zones-head">
-            <span>{t("zones.title")}</span>
-            {#if editingZones}
-              <span class="hint">{t("zones.hint")}</span>
-            {:else}
-              <Button variant="ghost" onclick={() => (editingZones = true)}
-                >{t("zones.edit")}</Button
-              >
-            {/if}
-          </div>
-          {#if editingZones}
-            {#each zones as zone, i (i)}
-              <div class="zone-row">
-                <input
-                  class="zone-name"
-                  placeholder={t("zones.name")}
-                  bind:value={zone.name}
-                  maxlength="64"
-                />
-                <input
-                  class="zone-radius mono"
-                  type="number"
-                  min="50"
-                  max="50000"
-                  bind:value={zone.radiusM}
-                  aria-label={t("zones.radius")}
-                />
-                <span class="mono unit">m</span>
-                <Button variant="ghost" onclick={() => (zones = zones.filter((_, j) => j !== i))}>
-                  {t("action.close")}
-                </Button>
-              </div>
-            {/each}
-            <div class="zone-actions">
-              <Button
-                onclick={() => {
-                  editingZones = false;
-                  zones = [];
-                  void api.geofences(device.id).then((z) => (zones = z));
-                }}
-              >
-                {t("action.cancel")}
-              </Button>
-              <Button variant="primary" disabled={!active || busy} onclick={saveZones}>
-                {t("zones.save")}
-              </Button>
-            </div>
-          {:else if zones.length === 0}
-            <p class="hint">{t("zones.none")}</p>
+  <Tabs {tabs} selected={tab} onselect={(id) => (tab = id)} />
+
+  <div
+    class="panel"
+    role="tabpanel"
+    id="panel-overview"
+    aria-labelledby="tab-overview"
+    hidden={tab !== "overview"}
+  >
+    {#if tab === "overview"}
+      <div class="grid">
+        <div class="map-area">
+          {#if !onlineMap}
+            <p class="placeholder">{t("device.mapDisabled")}</p>
           {:else}
-            <ul class="zone-list">
-              {#each zones as zone (zone.id)}
-                <li>{zone.name || t("zones.unnamed")} · {Math.round(zone.radiusM)} m</li>
-              {/each}
-            </ul>
+            <MapView
+              points={detail.locations}
+              label={device.label}
+              {zones}
+              editing={editingZones}
+              onMapClick={addZone}
+            />
+            {#if last}
+              <p class="mono coords">
+                {last.latitude.toFixed(5)}, {last.longitude.toFixed(5)}
+                · {t("device.accuracy", { meters: Math.round(last.accuracyM) })}
+                · {dateTime(locale, last.fixTimeMs)}
+                · {t("device.positions", { count: detail.locations.length })}
+              </p>
+            {:else}
+              <p class="coords">{t("device.noLocation")}</p>
+            {/if}
+            <div class="zones">
+              <div class="zones-head">
+                <span>{t("zones.title")}</span>
+                {#if editingZones}
+                  <span class="hint">{t("zones.hint")}</span>
+                {:else}
+                  <Button variant="ghost" onclick={() => (editingZones = true)}
+                    >{t("zones.edit")}</Button
+                  >
+                {/if}
+              </div>
+              {#if editingZones}
+                {#each zones as zone, i (i)}
+                  <div class="zone-row">
+                    <input
+                      class="zone-name"
+                      placeholder={t("zones.name")}
+                      bind:value={zone.name}
+                      maxlength="64"
+                    />
+                    <input
+                      class="zone-radius mono"
+                      type="number"
+                      min="50"
+                      max="50000"
+                      bind:value={zone.radiusM}
+                      aria-label={t("zones.radius")}
+                    />
+                    <span class="mono unit">m</span>
+                    <Button
+                      variant="ghost"
+                      onclick={() => (zones = zones.filter((_, j) => j !== i))}
+                    >
+                      {t("action.close")}
+                    </Button>
+                  </div>
+                {/each}
+                <div class="zone-actions">
+                  <Button
+                    onclick={() => {
+                      editingZones = false;
+                      zones = [];
+                      void api.geofences(device.id).then((z) => (zones = z));
+                    }}
+                  >
+                    {t("action.cancel")}
+                  </Button>
+                  <Button variant="primary" disabled={!active || busy} onclick={saveZones}>
+                    {t("zones.save")}
+                  </Button>
+                </div>
+              {:else if zones.length === 0}
+                <p class="hint">{t("zones.none")}</p>
+              {:else}
+                <ul class="zone-list">
+                  {#each zones as zone (zone.id)}
+                    <li>{zone.name || t("zones.unnamed")} · {Math.round(zone.radiusM)} m</li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
           {/if}
         </div>
+        <div class="side">
+          {#if status}
+            <ul class="facts">
+              {#if status.batteryPercent !== null}
+                <li>
+                  {t("device.battery", { level: status.batteryPercent })}{status.charging
+                    ? ` (${t("device.charging")})`
+                    : ""}
+                </li>
+              {/if}
+              <li>{t("device.network", { network: t(key(`network.${status.network}`)) })}</li>
+              <li>{t("device.tracking", { mode: t(key(`tracking.${status.trackingMode}`)) })}</li>
+              {#if status.lostMode}<li class="lost">{t("device.lostMode")}</li>{/if}
+            </ul>
+            {#if status.health.length > 0}
+              <h2>{t("device.health")}</h2>
+              <ul class="health">
+                {#each status.health as h (h.feature)}
+                  <li class={h.state}>
+                    <span class="mono">{h.feature}</span>
+                    <span>{t(key(`health.${h.state}`))}{h.reason ? ` · ${h.reason}` : ""}</span>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/if}
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <div
+    class="panel"
+    role="tabpanel"
+    id="panel-control"
+    aria-labelledby="tab-control"
+    hidden={tab !== "control"}
+  >
+    <h2>{t("tabs.control")}</h2>
+    <div class="actions">
+      <Button
+        variant="primary"
+        disabled={!active || busy}
+        onclick={() => send({ kind: "ring", durationSeconds: 0, flashlight: true, vibrate: true })}
+        >{t("action.ring")}</Button
+      >
+      <Button disabled={!active || busy} onclick={() => send({ kind: "stopRing" })}
+        >{t("action.stopRing")}</Button
+      >
+      <Button
+        disabled={!active || busy}
+        onclick={() => send({ kind: "locate", highAccuracy: true })}>{t("action.locate")}</Button
+      >
+      <Button disabled={!active || busy} onclick={() => send({ kind: "status" })}
+        >{t("action.status")}</Button
+      >
+      <Button
+        disabled={!active || busy}
+        onclick={() => send({ kind: "trackingMode", mode: "active" })}
+        >{t("action.trackActive")}</Button
+      >
+      <Button
+        disabled={!active || busy}
+        onclick={() => send({ kind: "trackingMode", mode: "standby" })}
+        >{t("action.trackStandby")}</Button
+      >
+      {#if status?.lostMode}
+        <Button
+          disabled={!active || busy}
+          onclick={() => send({ kind: "lostMode", enabled: false, contact: null })}
+          >{t("action.lostModeOff")}</Button
+        >
+      {:else}
+        <Button disabled={!active || busy} onclick={() => (dialog = "lost")}
+          >{t("action.lostMode")}</Button
+        >
       {/if}
     </div>
+    {#if feedback}
+      <p class:error={feedbackError} class="feedback" role="status">{feedback}</p>
+    {/if}
 
-    <aside>
-      {#if status}
-        <ul class="facts">
-          {#if status.batteryPercent !== null}
-            <li>
-              {t("device.battery", { level: status.batteryPercent })}{status.charging
-                ? ` (${t("device.charging")})`
-                : ""}
-            </li>
-          {/if}
-          <li>{t("device.network", { network: t(key(`network.${status.network}`)) })}</li>
-          <li>{t("device.tracking", { mode: t(key(`tracking.${status.trackingMode}`)) })}</li>
-          {#if status.lostMode}<li class="lost">{t("device.lostMode")}</li>{/if}
-        </ul>
-        {#if status.health.length > 0}
-          <h2>{t("device.health")}</h2>
-          <ul class="health">
-            {#each status.health as h (h.feature)}
-              <li class={h.state}>
-                <span class="mono">{h.feature}</span>
-                <span>{t(key(`health.${h.state}`))}{h.reason ? ` · ${h.reason}` : ""}</span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      {/if}
+    <ScreenPanel deviceId={device.id} {active} />
+  </div>
 
-      <div class="actions">
-        <Button
-          variant="primary"
-          disabled={!active || busy}
-          onclick={() =>
-            send({ kind: "ring", durationSeconds: 0, flashlight: true, vibrate: true })}
-          >{t("action.ring")}</Button
-        >
-        <Button disabled={!active || busy} onclick={() => send({ kind: "stopRing" })}
-          >{t("action.stopRing")}</Button
-        >
-        <Button
-          disabled={!active || busy}
-          onclick={() => send({ kind: "locate", highAccuracy: true })}>{t("action.locate")}</Button
-        >
-        <Button disabled={!active || busy} onclick={() => send({ kind: "status" })}
-          >{t("action.status")}</Button
-        >
-        <Button
-          disabled={!active || busy}
-          onclick={() => send({ kind: "trackingMode", mode: "active" })}
-          >{t("action.trackActive")}</Button
-        >
-        <Button
-          disabled={!active || busy}
-          onclick={() => send({ kind: "trackingMode", mode: "standby" })}
-          >{t("action.trackStandby")}</Button
-        >
-        {#if status?.lostMode}
-          <Button
-            disabled={!active || busy}
-            onclick={() => send({ kind: "lostMode", enabled: false, contact: null })}
-            >{t("action.lostModeOff")}</Button
-          >
-        {:else}
-          <Button disabled={!active || busy} onclick={() => (dialog = "lost")}
-            >{t("action.lostMode")}</Button
-          >
-        {/if}
-      </div>
-      {#if feedback}
-        <p class:error={feedbackError} class="feedback" role="status">{feedback}</p>
-      {/if}
+  <div
+    class="panel"
+    role="tabpanel"
+    id="panel-media"
+    aria-labelledby="tab-media"
+    hidden={tab !== "media"}
+  >
+    <CameraPanel deviceId={device.id} {active} {revision} />
+  </div>
 
-      <h2>{t("action.sensitive")}</h2>
-      <div class="actions">
-        <Button variant="danger" disabled={!active} onclick={() => (dialog = "lock")}
-          >{t("action.lock")}</Button
-        >
-        <Button variant="danger" disabled={!active} onclick={() => (dialog = "wipe")}
-          >{t("action.wipe")}</Button
-        >
-        <Button variant="danger" disabled={!active} onclick={() => (dialog = "unpair")}
-          >{t("action.unpair")}</Button
-        >
-        <Button variant="ghost" onclick={() => (dialog = "forget")}>{t("action.forget")}</Button>
-      </div>
-
-      <CameraPanel deviceId={device.id} {active} {revision} />
-
-      <ScreenPanel deviceId={device.id} {active} />
-
+  <div
+    class="panel"
+    role="tabpanel"
+    id="panel-comms"
+    aria-labelledby="tab-comms"
+    hidden={tab !== "comms"}
+  >
+    <div class="two">
       <PhonePanel deviceId={device.id} {active} />
+      <MessagesPanel deviceId={device.id} {active} />
+    </div>
+  </div>
 
-      {#if detail.commands.length > 0}
-        <h2>{t("device.commands")}</h2>
-        <ul class="commands">
-          {#each detail.commands as c (c.id)}
-            <li>
-              <span>{t(key(`command.${c.kind}`))}</span>
-              <span class={`status ${c.status}`}
-                >{t(key(`status.${c.status}`))}{c.reason ? ` · ${c.reason}` : ""}</span
-              >
-              <span class="time">{relativeTime(t, c.sentMs, now)}</span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
+  <div
+    class="panel"
+    role="tabpanel"
+    id="panel-security"
+    aria-labelledby="tab-security"
+    hidden={tab !== "security"}
+  >
+    <h2>{t("action.sensitive")}</h2>
+    <div class="actions">
+      <Button variant="danger" disabled={!active} onclick={() => (dialog = "lock")}
+        >{t("action.lock")}</Button
+      >
+      <Button variant="danger" disabled={!active} onclick={() => (dialog = "wipe")}
+        >{t("action.wipe")}</Button
+      >
+      <Button variant="danger" disabled={!active} onclick={() => (dialog = "unpair")}
+        >{t("action.unpair")}</Button
+      >
+      <Button variant="ghost" onclick={() => (dialog = "forget")}>{t("action.forget")}</Button>
+    </div>
 
-      <h2>{t("device.fingerprint")}</h2>
-      <p class="mono fingerprint">{device.fingerprint}</p>
-    </aside>
+    {#if detail.commands.length > 0}
+      <h2>{t("device.commands")}</h2>
+      <ul class="commands">
+        {#each detail.commands as c (c.id)}
+          <li>
+            <span>{t(key(`command.${c.kind}`))}</span>
+            <span class={`status ${c.status}`}
+              >{t(key(`status.${c.status}`))}{c.reason ? ` · ${c.reason}` : ""}</span
+            >
+            <span class="time">{relativeTime(t, c.sentMs, now)}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    <h2>{t("device.fingerprint")}</h2>
+    <p class="mono fingerprint">{device.fingerprint}</p>
   </div>
 </section>
 
@@ -447,8 +518,32 @@
     color: var(--color-text-secondary);
   }
 
-  aside {
+  .panel {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
+    padding-right: var(--space-xs);
+  }
+
+  .panel[hidden] {
+    display: none;
+  }
+
+  .side {
+    overflow-y: auto;
+  }
+
+  .two {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: var(--space-lg);
+    align-items: start;
+  }
+
+  @media (max-width: 1700px) {
+    .two {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   ul {

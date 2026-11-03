@@ -37,6 +37,9 @@ message Command {
     // READ_CONTACTS / CALL_PHONE runtime permissions, granted on the phone by the owner.
     ContactsRequest contacts_request = 18;
     CallControl call_control = 19;
+    // Text messages over the phone's own SIM. Needs the SEND_SMS / READ_SMS runtime permissions.
+    SmsSend sms_send = 20;
+    SmsList sms_list = 21;
   }
 }
 
@@ -247,6 +250,21 @@ message CallControl {
   Action action = 1;
   // Required for ACTION_DIAL: digits, +, *, # only, max 32 characters (enforced by the receiver).
   string number = 2;
+}
+
+// Sends one text message from the phone's SIM. The body is plain text, max 1000 characters.
+message SmsSend {
+  // Digits, +, *, # only, max 32 characters (enforced by the receiver).
+  string to = 1;
+  string body = 2;
+}
+
+// Reads text messages, answered by an SmsPage event. With an empty `peer` the phone returns the
+// latest message of each conversation; otherwise the most recent messages exchanged with `peer`.
+message SmsList {
+  string peer = 1;
+  // Clamped by the phone to 1..50 (0 = 30).
+  uint32 limit = 2;
 }
 
 message Wipe {

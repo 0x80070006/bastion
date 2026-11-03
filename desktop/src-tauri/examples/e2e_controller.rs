@@ -138,6 +138,7 @@ async fn main() {
                         total, contacts, ..
                     } => println!("CONTACTS {} of {total}", contacts.len()),
                     Media::Call { state, error, .. } => println!("CALL {state} {error}"),
+                    Media::Sms { messages, .. } => println!("SMS {} messages", messages.len()),
                 }
             }
             ids.push(item.id);

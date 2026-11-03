@@ -10,6 +10,7 @@
     type CallState,
     type PhoneContact,
   } from "../lib/api";
+  import { createIntercom } from "../lib/intercom";
   import { t, type MessageKey } from "../lib/i18n";
 
   interface Props {
@@ -53,9 +54,66 @@
     feedback = state.error ? t(key(`phone.err.${state.error}`)) : "";
   }).then((fn) => cleanups.push(fn));
 
+  // "Sound on the PC": the phone goes on speaker, its microphone picks the caller up and the PC
+  // plays it, while the PC microphone plays on the phone. Closes by itself when the call ends.
+  const intercom = createIntercom(
+    () => deviceId,
+    () => (feedback = t("phone.pcAudioSilent")),
+  );
+  let pcAudio = $state(false);
+  let pcAudioLive = $state(false);
+  let pcAudioBusy = $state(false);
+  let sawCall = false;
+
+  const AUDIO_ERRORS: Record<string, MessageKey> = {
+    pc_mic_denied: "phone.pcAudioDenied",
+    pc_mic_missing: "phone.pcAudioNoMic",
+    pc_audio_error: "phone.pcAudioError",
+    mic_permission_denied: "phone.pcAudioPhoneMic",
+    mic_unavailable: "phone.pcAudioPhoneBusy",
+    send_failed: "phone.pcAudioSend",
+    timeout: "phone.pcAudioNoAnswer",
+  };
+
+  async function togglePcAudio() {
+    feedback = "";
+    if (pcAudio) {
+      pcAudio = false;
+      await closePcAudio();
+      return;
+    }
+    pcAudio = true;
+    await intercom.prepare();
+    await openPcAudio();
+  }
+
+  async function openPcAudio() {
+    if (pcAudioLive || pcAudioBusy) return;
+    pcAudioBusy = true;
+    try {
+      if (inCall && !call?.speaker) act("speakerOn");
+      const result = await intercom.start();
+      if (result.ok) {
+        pcAudioLive = true;
+      } else {
+        pcAudio = false;
+        const key = AUDIO_ERRORS[result.reason];
+        feedback = key ? t(key) : t("phone.pcAudioFailed", { reason: result.reason });
+      }
+    } finally {
+      pcAudioBusy = false;
+    }
+  }
+
+  async function closePcAudio() {
+    pcAudioLive = false;
+    await intercom.stop();
+  }
+
   onDestroy(() => {
     cleanups.forEach((fn) => fn());
     clearTimeout(stallTimer);
+    void intercom.stop();
     // Contacts are personal data: drop them as soon as the panel closes.
     contacts = [];
   });
@@ -104,6 +162,19 @@
 
   const phase = $derived(call?.state ?? "idle");
   const inCall = $derived(phase !== "idle");
+
+  // End of a call closes the PC audio and unticks the box, so the microphone never stays open.
+  $effect(() => {
+    if (phase !== "idle") {
+      sawCall = true;
+    } else if (sawCall) {
+      sawCall = false;
+      if (pcAudio || pcAudioLive) {
+        pcAudio = false;
+        void closePcAudio();
+      }
+    }
+  });
 </script>
 
 <section aria-labelledby="phone-title">
@@ -138,6 +209,18 @@
       </Button>
     {/if}
   </div>
+
+  <label class="pcaudio">
+    <input
+      type="checkbox"
+      checked={pcAudio}
+      onchange={togglePcAudio}
+      disabled={!active || pcAudioBusy}
+    />
+    <span>{t("phone.pcAudio")}</span>
+    {#if pcAudioLive}<span class="live mono">{t("phone.pcAudioLive")}</span>{/if}
+  </label>
+  <p class="hint">{t("phone.pcAudioHint")}</p>
 
   <form
     class="row"
@@ -278,6 +361,31 @@
 
   .spacer {
     flex: 1;
+  }
+
+  .pcaudio {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+    font-size: var(--type-label-size);
+    cursor: pointer;
+  }
+
+  .pcaudio input {
+    accent-color: var(--color-accent);
+  }
+
+  .live {
+    margin-left: auto;
+    font-size: var(--type-caption-size);
+    color: var(--color-success);
+  }
+
+  .hint {
+    margin: var(--space-xxs) 0 0;
+    font-size: var(--type-caption-size);
+    color: var(--color-text-secondary);
   }
 
   .row {

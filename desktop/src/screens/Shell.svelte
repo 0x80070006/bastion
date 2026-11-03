@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import Button from "../lib/components/Button.svelte";
+  import Emblem from "../lib/components/Emblem.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import StatusBadge from "../lib/components/StatusBadge.svelte";
   import Devices from "./Devices.svelte";
@@ -131,7 +132,7 @@
 
 <div class="shell">
   <nav aria-label={PRODUCT_NAME}>
-    <span class="wordmark">{PRODUCT_NAME}</span>
+    <span class="wordmark"><Emblem size={34} label={PRODUCT_NAME} /></span>
     <ul>
       {#each nav as item, i (item.id)}
         <li>
@@ -194,17 +195,7 @@
   }
 
   .wordmark {
-    font-family: var(--font-mono);
-    font-size: var(--type-title-size);
-    line-height: var(--type-title-line-height);
-    font-weight: var(--type-title-weight);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--color-text-primary);
-  }
-
-  .wordmark::before {
-    content: "▚ ";
+    display: flex;
     color: var(--color-accent);
   }
 

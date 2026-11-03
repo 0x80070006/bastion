@@ -18,26 +18,7 @@
  * semantic colours reserved for status. Spacing stays on the 4/8 px grid of tokens.css.
  */
 :root {
-  --color-background: #0b0e11;
-  --color-surface: #10151a;
-  --color-surface-raised: #161c22;
-  --color-border: #1f272e;
-  --color-border-active: #2d3842;
-  --color-text-primary: #e6eaed;
-  --color-text-secondary: #9aa6b0;
-  --color-text-tertiary: #7b8792;
-  --color-accent: #3ddc97;
-  --color-on-accent: #04130c;
-  /* Status only. OK shares the accent hue: "active" and "healthy" are the same state. */
-  --color-success: #3ddc97;
-  --color-warning: #e5a00d;
-  --color-danger: #f0524f;
-  --color-inactive: #6b7782;
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Colours, radii and fonts come from the shared tokens (design/tokens.json). */
   /* Density: comfortable by default, `data-density="compact"` tightens controls and rows. */
   --control-h: 36px;
   --row-pad: 12px;

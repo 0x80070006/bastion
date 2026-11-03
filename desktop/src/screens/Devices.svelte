@@ -73,7 +73,9 @@
     </nav>
     <div class="content">
       {#if detail && detail.summary.id === current?.id}
-        <DeviceDetailView {detail} {onlineMap} {now} {revision} />
+        {#key detail.summary.id}
+          <DeviceDetailView {detail} {onlineMap} {now} {revision} />
+        {/key}
       {/if}
     </div>
   </div>

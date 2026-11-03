@@ -21,6 +21,8 @@ message Event {
     ScreenFrame screen_frame = 8;
     ContactsPage contacts_page = 9;
     CallState call_state = 10;
+    SmsPage sms_page = 11;
+    SmsReceived sms_received = 12;
   }
 }
 
@@ -210,6 +212,30 @@ message CallState {
   int64 at_ms = 5;
   // Machine-readable reason when a CallControl was refused, e.g. "call_permission_denied".
   string error = 6;
+}
+
+message SmsMessage {
+  // Remote number as stored by the phone, max 32 characters.
+  string address = 1;
+  // Contact name for `address`, if known, max 128 characters.
+  string name = 2;
+  // Plain text, max 1000 characters.
+  string body = 3;
+  // Message time, Unix epoch milliseconds.
+  int64 at_ms = 4;
+  // True when sent from this phone, false when received.
+  bool outgoing = 5;
+}
+
+// Answer to SmsList: newest first. `peer` echoes the request (empty = conversation list).
+message SmsPage {
+  string peer = 1;
+  repeated SmsMessage messages = 2;
+}
+
+// A message that just arrived on the phone.
+message SmsReceived {
+  SmsMessage message = 1;
 }
 
 message LastChanceBeacon {

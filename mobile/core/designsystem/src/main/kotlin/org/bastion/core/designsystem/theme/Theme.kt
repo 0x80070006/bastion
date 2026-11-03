@@ -29,6 +29,7 @@ data class BastionColors(
     val danger: Color = ColorTokens.Danger,
     val success: Color = ColorTokens.Success,
     val warning: Color = ColorTokens.Warning,
+    val inactive: Color = ColorTokens.Inactive,
 )
 
 private val LocalBastionColors = staticCompositionLocalOf { BastionColors() }

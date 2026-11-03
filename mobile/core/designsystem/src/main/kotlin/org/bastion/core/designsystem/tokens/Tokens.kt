@@ -7,19 +7,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 object ColorTokens {
-    val Background = Color(0xFF0A0A0B)
-    val Surface = Color(0xFF111113)
-    val SurfaceRaised = Color(0xFF17171A)
-    val Border = Color(0xFF24242A)
-    val BorderActive = Color(0xFF34343C)
-    val TextPrimary = Color(0xFFEDEDEF)
-    val TextSecondary = Color(0xFF9A9AA3)
-    val TextTertiary = Color(0xFF62626B)
-    val Accent = Color(0xFFC9B27C)
-    val OnAccent = Color(0xFF0A0A0B)
-    val Danger = Color(0xFFC5574F)
-    val Success = Color(0xFF5FA37A)
-    val Warning = Color(0xFFC79A4A)
+    val Background = Color(0xFF0B0E11)
+    val Surface = Color(0xFF10151A)
+    val SurfaceRaised = Color(0xFF161C22)
+    val Border = Color(0xFF1F272E)
+    val BorderActive = Color(0xFF2D3842)
+    val TextPrimary = Color(0xFFE6EAED)
+    val TextSecondary = Color(0xFF9AA6B0)
+    val TextTertiary = Color(0xFF7B8792)
+    val Accent = Color(0xFF3DDC97)
+    val OnAccent = Color(0xFF04130C)
+    val Danger = Color(0xFFF0524F)
+    val Success = Color(0xFF3DDC97)
+    val Warning = Color(0xFFE5A00D)
+    val Inactive = Color(0xFF6B7782)
 }
 
 object SpacingTokens {
@@ -33,9 +34,9 @@ object SpacingTokens {
 }
 
 object RadiusTokens {
-    val Sm = 6.dp
-    val Md = 10.dp
-    val Lg = 12.dp
+    val Sm = 2.dp
+    val Md = 3.dp
+    val Lg = 4.dp
 }
 
 object BorderTokens {
@@ -64,6 +65,6 @@ object SizeTokens {
 }
 
 object FontTokens {
-    const val SANS = "Inter Tight"
+    const val SANS = "IBM Plex Sans"
     const val MONO = "JetBrains Mono"
 }

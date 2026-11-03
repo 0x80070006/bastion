@@ -5,10 +5,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.util.Log
+import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -48,12 +51,24 @@ class CameraCapture(private val context: Context) : LifecycleOwner {
             else -> CameraSelector.DEFAULT_BACK_CAMERA
         }
         val cameraProvider = runCatching { awaitProvider() }.getOrNull() ?: return@withContext false
+        // Ask for a modest sensor mode: a 12 MP still takes seconds to open and exposes the capture
+        // to the camera being closed under it, while the result is downscaled to `maxEdge` anyway.
+        val resolution = ResolutionSelector.Builder()
+            .setResolutionStrategy(
+                ResolutionStrategy(
+                    Size(maxEdge, maxEdge * ASPECT_NUM / ASPECT_DEN),
+                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                ),
+            )
+            .build()
         val capture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setResolutionSelector(resolution)
             .build()
         try {
             registry.currentState = Lifecycle.State.RESUMED
-            cameraProvider.unbindAll()
+            // Only this capture's own use case is touched: the provider is a process-wide singleton and
+            // unbinding everything would kill a capture another caller has in flight.
             cameraProvider.bindToLifecycle(this@CameraCapture, selector, capture)
         } catch (e: IllegalArgumentException) {
             Log.w(TAG, "camera bind failed: ${e.javaClass.simpleName}")
@@ -90,7 +105,7 @@ class CameraCapture(private val context: Context) : LifecycleOwner {
 
     /** Unbinds the camera and releases resources. */
     suspend fun stop() = withContext(Dispatchers.Main) {
-        runCatching { provider?.unbindAll() }
+        runCatching { imageCapture?.let { provider?.unbind(it) } }
         provider = null
         imageCapture = null
         registry.currentState = Lifecycle.State.DESTROYED
@@ -160,5 +175,7 @@ class CameraCapture(private val context: Context) : LifecycleOwner {
         const val MAX_EDGE = 1280
         const val JPEG_QUALITY = 70
         const val CAPTURE_TIMEOUT_MS = 8_000L
+        const val ASPECT_NUM = 3
+        const val ASPECT_DEN = 4
     }
 }

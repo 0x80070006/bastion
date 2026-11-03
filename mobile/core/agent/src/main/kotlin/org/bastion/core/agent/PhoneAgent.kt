@@ -135,6 +135,14 @@ public sealed interface AgentCommand {
     /** Place, answer or end a call, or switch the speakerphone. */
     public class Call(override val messageId: ByteArray, public val control: org.bastion.protocol.v1.CallControl) :
         AgentCommand
+
+    /** Send a text message. */
+    public class SmsSend(override val messageId: ByteArray, public val to: String, public val body: String) :
+        AgentCommand
+
+    /** Read the conversation list ([peer] empty) or one thread. */
+    public class SmsList(override val messageId: ByteArray, public val peer: String, public val limit: Int) :
+        AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -545,6 +553,9 @@ public class PhoneAgent(private val sodium: Sodium) {
         private const val MAX_QUERY = 64
         private const val DEFAULT_CONTACTS = 100
         private const val MAX_CONTACTS = 200
+        private const val MAX_SMS_BODY = 1000
+        private const val DEFAULT_SMS = 30
+        private const val MAX_SMS = 50
         private const val ROTATION_INTERVAL_MS = 7L * 24 * 3600 * 1000
 
         /** TTL caps per payload type (PROTOCOL.md §6.8). */
@@ -658,6 +669,18 @@ public class PhoneAgent(private val sodium: Sodium) {
             )
 
             Command.KindCase.CALL_CONTROL -> AgentCommand.Call(id, command.callControl)
+
+            Command.KindCase.SMS_SEND -> AgentCommand.SmsSend(
+                id,
+                command.smsSend.to.take(MAX_QUERY),
+                command.smsSend.body.take(MAX_SMS_BODY),
+            )
+
+            Command.KindCase.SMS_LIST -> AgentCommand.SmsList(
+                id,
+                command.smsList.peer.take(MAX_QUERY),
+                command.smsList.limit.let { if (it == 0) DEFAULT_SMS else it.coerceIn(1, MAX_SMS) },
+            )
 
             else -> null
         }

@@ -41,6 +41,7 @@ import org.bastion.core.designsystem.theme.BastionTheme
 import org.bastion.core.designsystem.tokens.SpacingTokens
 import org.bastion.feature.onboarding.PairingScreen
 import org.bastion.feature.onboarding.SasScreen
+import org.bastion.feature.protection.CapabilityId
 import org.bastion.feature.protection.HealthId
 import org.bastion.feature.protection.ProtectionScreen
 import org.bastion.feature.protection.UnpairedScreen
@@ -171,6 +172,58 @@ class MainActivity : FragmentActivity() {
         ProtectionService.start(this)
     }
 
+    /**
+     * Real control behind a capability switch: ask Android for the missing permission(s), or open
+     * the system page where the owner can remove a granted one (an app cannot revoke by itself).
+     */
+    private fun capability(id: CapabilityId, granted: Boolean) {
+        if (granted) {
+            // The accessibility service is switched off in its own settings page, not in app details.
+            if (id == CapabilityId.ACCESSIBILITY) {
+                systemScreen.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            } else {
+                manage()
+            }
+            return
+        }
+        when (id) {
+            CapabilityId.CAMERA -> permissions.launch(arrayOf(Manifest.permission.CAMERA))
+
+            CapabilityId.MICROPHONE -> permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+
+            CapabilityId.CONTACTS -> permissions.launch(arrayOf(Manifest.permission.READ_CONTACTS))
+
+            CapabilityId.PHONE -> permissions.launch(
+                arrayOf(
+                    Manifest.permission.CALL_PHONE,
+                    Manifest.permission.ANSWER_PHONE_CALLS,
+                    Manifest.permission.READ_PHONE_STATE,
+                ),
+            )
+
+            CapabilityId.SMS -> permissions.launch(
+                arrayOf(
+                    Manifest.permission.SEND_SMS,
+                    Manifest.permission.READ_SMS,
+                    Manifest.permission.RECEIVE_SMS,
+                ),
+            )
+
+            CapabilityId.ACCESSIBILITY -> systemScreen.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        ProtectionService.start(this)
+    }
+
+    private fun manage() {
+        systemScreen.launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri()))
+    }
+
+    /** Re-reads every permission and connection now and makes sure the protection service runs. */
+    private fun check() {
+        viewModel.refresh()
+        ProtectionService.start(this)
+    }
+
     @Composable
     private fun Root() {
         if (!unlocked) {
@@ -215,6 +268,9 @@ class MainActivity : FragmentActivity() {
             is HomeState.Protected -> ProtectionScreen(
                 state = state.ui,
                 onFix = ::fix,
+                onCapability = { id -> capability(id, state.ui.capabilities.first { it.id == id }.granted) },
+                onManage = ::manage,
+                onCheck = ::check,
                 onUnpair = viewModel::unpair,
             )
         }

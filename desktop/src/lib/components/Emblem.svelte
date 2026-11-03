@@ -1,0 +1,22 @@
+<script lang="ts">
+  // BASTION emblem alone (no wordmark), traced from the brand logo. Colour follows the text colour.
+  interface Props {
+    size?: number;
+    label?: string;
+  }
+
+  let { size = 28, label = "" }: Props = $props();
+</script>
+
+<svg
+  viewBox="0 0 100 87.01"
+  width={size}
+  fill="currentColor"
+  role={label ? "img" : undefined}
+  aria-label={label || undefined}
+  aria-hidden={label ? undefined : "true"}
+>
+  <path
+    d="M45.45,0 L45.71,14.29 L16.62,31.95 L8.57,29.61 L1.56,27.53 L1.3,26.75 Z M54.29,0 L99.22,27.01 L92.21,29.35 L83.38,31.95 L54.29,14.29 Z M0,34.81 L16.1,40.52 L27.79,67.27 L23.38,74.03 L19.74,78.96 Z M100,34.81 L80.26,79.22 L76.88,74.29 L72.47,67.01 L83.9,40.52 Z M49.87,66.23 L66.49,71.69 L75.06,86.75 L50.13,79.22 L24.94,87.01 L33.25,71.95 Z"
+  />
+</svg>

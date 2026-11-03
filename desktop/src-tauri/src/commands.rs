@@ -216,13 +216,15 @@ pub async fn start_pairing(core: Core<'_>) -> AppResult<PairingView> {
     let uri = core
         .read(|s| s.invite_uri(&token, expires, &endpoint, &pin, &computer_label()))
         .await?;
-    let svg = qrcode::QrCode::with_error_correction_level(uri.as_bytes(), qrcode::EcLevel::M)
+    // Low error correction keeps the code small (fewer, larger modules) and pure black on white
+    // maximises contrast: phone cameras analyse ~640x480 frames, so a dense, dim code fails to scan.
+    let svg = qrcode::QrCode::with_error_correction_level(uri.as_bytes(), qrcode::EcLevel::L)
         .map_err(|_| AppError::Internal)?
         .render::<qrcode::render::svg::Color<'_>>()
-        .min_dimensions(320, 320)
+        .min_dimensions(440, 440)
         .quiet_zone(true)
-        .dark_color(qrcode::render::svg::Color("#0a0a0b"))
-        .light_color(qrcode::render::svg::Color("#ededef"))
+        .dark_color(qrcode::render::svg::Color("#000000"))
+        .light_color(qrcode::render::svg::Color("#ffffff"))
         .build();
     Ok(PairingView {
         qr_data_url: format!("data:image/svg+xml;base64,{}", STANDARD.encode(svg)),
@@ -386,6 +388,20 @@ pub enum CommandRequest {
         /// Number to dial (digits, `+`, `*`, `#`); ignored by other actions.
         number: String,
     },
+    /// Send a text message from the phone's SIM.
+    #[serde(rename_all = "camelCase")]
+    SmsSend {
+        /// Destination number (digits, `+`, `*`, `#`).
+        to: String,
+        /// Plain text, at most 1000 characters.
+        body: String,
+    },
+    /// Read the conversation list (empty `peer`) or one thread.
+    #[serde(rename_all = "camelCase")]
+    SmsList {
+        /// Number of the thread; empty for the conversation list.
+        peer: String,
+    },
 }
 
 /// Longest dialable number and search query accepted from the webview.
@@ -502,6 +518,8 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
         }),
         CommandRequest::Contacts { query, offset } => contacts_request(query, *offset)?,
         CommandRequest::Call { action, number } => call_control(action, number)?,
+        CommandRequest::SmsSend { to, body } => sms_send(to, body)?,
+        CommandRequest::SmsList { peer } => sms_list(peer)?,
     };
     Ok(Command { kind: Some(kind) })
 }
@@ -518,6 +536,28 @@ fn contacts_request(query: &str, offset: u32) -> AppResult<command::Kind> {
             limit: 100,
         },
     ))
+}
+
+fn sms_send(to: &str, body: &str) -> AppResult<command::Kind> {
+    let to = to.trim();
+    if !dialable(to) || body.trim().is_empty() || body.chars().count() > 1000 {
+        return Err(AppError::InvalidInput);
+    }
+    Ok(command::Kind::SmsSend(bastion_proto::v1::SmsSend {
+        to: to.to_owned(),
+        body: body.to_owned(),
+    }))
+}
+
+fn sms_list(peer: &str) -> AppResult<command::Kind> {
+    let peer = peer.trim();
+    if !peer.is_empty() && !dialable(peer) {
+        return Err(AppError::InvalidInput);
+    }
+    Ok(command::Kind::SmsList(bastion_proto::v1::SmsList {
+        peer: peer.to_owned(),
+        limit: 30,
+    }))
 }
 
 fn call_control(action: &str, number: &str) -> AppResult<command::Kind> {

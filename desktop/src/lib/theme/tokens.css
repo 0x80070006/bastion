@@ -1,18 +1,19 @@
 /* GENERATED from design/tokens.json by tools/gen-tokens.mjs. Do not edit. */
 :root {
-  --color-background: #0a0a0b;
-  --color-surface: #111113;
-  --color-surface-raised: #17171a;
-  --color-border: #24242a;
-  --color-border-active: #34343c;
-  --color-text-primary: #ededef;
-  --color-text-secondary: #9a9aa3;
-  --color-text-tertiary: #62626b;
-  --color-accent: #c9b27c;
-  --color-on-accent: #0a0a0b;
-  --color-danger: #c5574f;
-  --color-success: #5fa37a;
-  --color-warning: #c79a4a;
+  --color-background: #0b0e11;
+  --color-surface: #10151a;
+  --color-surface-raised: #161c22;
+  --color-border: #1f272e;
+  --color-border-active: #2d3842;
+  --color-text-primary: #e6eaed;
+  --color-text-secondary: #9aa6b0;
+  --color-text-tertiary: #7b8792;
+  --color-accent: #3ddc97;
+  --color-on-accent: #04130c;
+  --color-danger: #f0524f;
+  --color-success: #3ddc97;
+  --color-warning: #e5a00d;
+  --color-inactive: #6b7782;
   --space-xxs: 4px;
   --space-xs: 8px;
   --space-sm: 12px;
@@ -20,11 +21,11 @@
   --space-lg: 24px;
   --space-xl: 32px;
   --space-xxl: 48px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
   --border-width: 1px;
-  --font-sans: "Inter Tight", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --type-display-size: 32px;
   --type-display-line-height: 40px;

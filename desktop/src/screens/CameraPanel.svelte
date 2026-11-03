@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import Button from "../lib/components/Button.svelte";
-  import { api, errorCode, onAudio, onFrame, type CameraChoice, type PhotoView } from "../lib/api";
+  import {
+    api,
+    awaitCommand,
+    errorCode,
+    onAudio,
+    onFrame,
+    type CameraChoice,
+    type PhotoView,
+  } from "../lib/api";
   import { dateTime } from "../lib/format";
   import { locale, t, type MessageKey } from "../lib/i18n";
 
@@ -212,8 +220,24 @@
     }
   }
 
-  function capture(camera: CameraChoice) {
-    return run(() => api.sendCommand(deviceId, { kind: "capturePhoto", camera }));
+  async function capture(camera: CameraChoice) {
+    const sentAt = Date.now();
+    await run(() => api.sendCommand(deviceId, { kind: "capturePhoto", camera }));
+    if (feedback) return;
+    // The phone answers asynchronously: tell the operator what really happened.
+    busy = true;
+    feedback = t("camera.waiting");
+    const outcome = await awaitCommand(deviceId, "capturePhoto", sentAt, 25_000);
+    busy = false;
+    if (outcome.status === "completed") {
+      feedback = "";
+    } else if (outcome.status === "timeout") {
+      feedback = t("camera.noAnswer");
+    } else {
+      const reason = `camera.err.${outcome.reason}` as MessageKey;
+      const text = t(reason);
+      feedback = text === reason ? t("camera.err.generic", { reason: outcome.reason }) : text;
+    }
   }
 
   async function toggleStream(camera: CameraChoice) {

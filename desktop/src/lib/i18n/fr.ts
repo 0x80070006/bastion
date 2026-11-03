@@ -131,6 +131,18 @@ export const fr = {
   "camera.talkStart": "Parler (interphone)",
   "camera.talkStop": "Fin de l'interphone",
   "camera.talking": "Interphone actif — la personne vous entend",
+  "camera.waiting": "Photo demandée, en attente du téléphone…",
+  "camera.noAnswer":
+    "Pas de réponse du téléphone : vérifiez qu'il est joignable et que l'app Bastion tourne.",
+  "camera.err.camera_permission_denied": "L'autorisation Caméra est désactivée sur le téléphone.",
+  "camera.err.camera_unavailable":
+    "La caméra du téléphone n'a pas pu prendre la photo (occupée ou bloquée par Android).",
+  "camera.err.camera_busy":
+    "La caméra est déjà utilisée (flux en direct) : arrêtez-le puis réessayez.",
+  "camera.err.relay_unreachable":
+    "Photo prise, mais le téléphone n'a pas pu l'envoyer (relais injoignable).",
+  "camera.err.internal_error": "Erreur interne du téléphone pendant la photo.",
+  "camera.err.generic": "Le téléphone a refusé la photo ({reason}).",
   "camera.micDenied": "L'accès au microphone a été refusé sur cet ordinateur.",
 
   "remote.title": "Contrôle à distance",
@@ -171,6 +183,47 @@ export const fr = {
   "command.intercom": "Interphone",
   "command.contacts": "Contacts",
   "command.call": "Appel",
+  "command.sms": "SMS",
+  "command.smsList": "Lecture des SMS",
+
+  "tabs.overview": "Vue d'ensemble",
+  "tabs.control": "Contrôle",
+  "tabs.media": "Médias",
+  "tabs.comms": "Communications",
+  "tabs.security": "Sécurité",
+  "tabs.aria": "Sections du téléphone",
+
+  "sms.title": "Messages",
+  "sms.note":
+    "Les SMS sont lus à la demande sur le téléphone et gardés en mémoire seulement. L'envoi utilise la SIM du téléphone.",
+  "sms.load": "Charger les conversations",
+  "sms.new": "Nouveau",
+  "sms.newNumber": "Numéro du destinataire",
+  "sms.loading": "Lecture des messages…",
+  "sms.idle": "Non chargé. Autorisez SMS sur le téléphone, puis chargez.",
+  "sms.empty": "Aucune conversation.",
+  "sms.emptyThread": "Aucun message avec ce numéro.",
+  "sms.pick": "Choisissez une conversation ou saisissez un numéro.",
+  "sms.you": "Vous :",
+  "sms.compose": "Votre message",
+  "sms.send": "Envoyer",
+  "sms.err.sms_permission_denied": "L'autorisation SMS est désactivée sur le téléphone.",
+
+  "phone.pcAudio": "Son sur le PC",
+  "phone.pcAudioHint":
+    "Le téléphone passe en haut-parleur ; son micro capte l'interlocuteur et le PC le diffuse. Qualité limitée, écho possible : un casque est conseillé.",
+  "phone.pcAudioDenied": "Micro du PC refusé : le son reste sur le téléphone.",
+  "phone.pcAudioNoMic": "Aucun microphone détecté sur ce PC : le son reste sur le téléphone.",
+  "phone.pcAudioError": "Impossible d'ouvrir l'audio du PC : le son reste sur le téléphone.",
+  "phone.pcAudioPhoneMic":
+    "L'autorisation Microphone est désactivée sur le téléphone (activez-la dans l'app).",
+  "phone.pcAudioPhoneBusy": "Le micro du téléphone est occupé ou bloqué par Android.",
+  "phone.pcAudioSend": "La demande n'a pas pu être envoyée au téléphone.",
+  "phone.pcAudioNoAnswer": "Le téléphone n'a pas répondu à temps.",
+  "phone.pcAudioFailed": "Le son sur le PC a échoué ({reason}).",
+  "phone.pcAudioSilent":
+    "Aucun son reçu : Android coupe le micro du téléphone pendant un appel, la voix de l'interlocuteur ne peut pas être captée. Utilisez le haut-parleur du téléphone ou un casque.",
+  "phone.pcAudioLive": "Son sur le PC actif",
 
   "phone.title": "Contacts et appels",
   "phone.note":

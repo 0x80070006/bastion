@@ -731,50 +731,89 @@ impl AppCore {
                     height,
                     locked,
                 } => (self.screen)(&device_id, sequence, &jpeg, width, height, locked),
-                Media::Contacts {
-                    device_id,
-                    offset,
-                    total,
-                    query,
-                    contacts,
-                } => {
-                    let contacts: Vec<_> = contacts
-                        .into_iter()
-                        .map(|(name, numbers)| serde_json::json!({ "name": name, "numbers": numbers }))
-                        .collect();
-                    (self.phone)(
-                        "contacts",
-                        &device_id,
-                        serde_json::json!({
-                            "offset": offset,
-                            "total": total,
-                            "query": query,
-                            "contacts": contacts,
-                        }),
-                    );
+                other @ (Media::Contacts { .. } | Media::Call { .. } | Media::Sms { .. }) => {
+                    self.emit_phone(other);
                 }
-                Media::Call {
-                    device_id,
-                    state,
-                    number,
-                    name,
-                    speaker,
-                    error,
-                } => (self.phone)(
-                    "call",
-                    &device_id,
-                    serde_json::json!({
-                        "state": state,
-                        "number": number,
-                        "name": name,
-                        "speaker": speaker,
-                        "error": error,
-                    }),
-                ),
             }
         }
         if stored_photo {
             self.prune_media(unlocked);
+        }
+    }
+
+    /// Pushes contact pages, call state and text messages to the webview (in memory only).
+    fn emit_phone(&self, media: crate::engine::Media) {
+        use crate::engine::Media;
+        match media {
+            Media::Contacts {
+                device_id,
+                offset,
+                total,
+                query,
+                contacts,
+            } => {
+                let contacts: Vec<_> = contacts
+                    .into_iter()
+                    .map(|(name, numbers)| serde_json::json!({ "name": name, "numbers": numbers }))
+                    .collect();
+                (self.phone)(
+                    "contacts",
+                    &device_id,
+                    serde_json::json!({
+                        "offset": offset,
+                        "total": total,
+                        "query": query,
+                        "contacts": contacts,
+                    }),
+                );
+            }
+            Media::Call {
+                device_id,
+                state,
+                number,
+                name,
+                speaker,
+                error,
+            } => (self.phone)(
+                "call",
+                &device_id,
+                serde_json::json!({
+                    "state": state,
+                    "number": number,
+                    "name": name,
+                    "speaker": speaker,
+                    "error": error,
+                }),
+            ),
+            Media::Sms {
+                device_id,
+                peer,
+                incoming,
+                messages,
+            } => {
+                let messages: Vec<_> = messages
+                    .into_iter()
+                    .map(|m| {
+                        serde_json::json!({
+                            "address": m.address,
+                            "name": m.name,
+                            "body": m.body,
+                            "atMs": m.at_ms,
+                            "outgoing": m.outgoing,
+                        })
+                    })
+                    .collect();
+                (self.phone)(
+                    "sms",
+                    &device_id,
+                    serde_json::json!({
+                        "peer": peer,
+                        "incoming": incoming,
+                        "messages": messages,
+                    }),
+                );
+            }
+            _ => {}
         }
     }
 

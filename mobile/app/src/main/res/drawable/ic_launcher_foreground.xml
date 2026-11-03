@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pentagonal bastion outline, mirrors branding/icon.svg. 108dp adaptive canvas, 72dp safe zone. -->
+<!-- BASTION emblem, traced from the brand logo. 108dp adaptive canvas, 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M54,33 L74,47.5 L66.4,71 L41.6,71 L34,47.5 Z"
-        android:strokeColor="#C9B27C"
-        android:strokeWidth="3.2"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000" />
-    <path
-        android:pathData="M54,52.5 m-2.6,0 a2.6,2.6 0,1 1,5.2 0 a2.6,2.6 0,1 1,-5.2 0"
-        android:fillColor="#C9B27C" />
+        android:pathData="M51.55,30.51 L51.69,38.22 L35.98,47.76 L31.63,46.5 L27.84,45.37 L27.7,44.95 Z M56.31,30.51 L80.58,45.09 L76.79,46.36 L72.02,47.76 L56.31,38.22 Z M27,49.3 L35.7,52.39 L42.01,66.83 L39.62,70.48 L37.66,73.15 Z M81,49.3 L70.34,73.29 L68.52,70.62 L66.13,66.69 L72.3,52.39 Z M53.93,66.27 L62.91,69.22 L67.54,77.35 L54.07,73.29 L40.46,77.49 L44.95,69.36 Z"
+        android:fillColor="#3DDC97" />
 </vector>

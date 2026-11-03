@@ -15,6 +15,9 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import org.bastion.feature.protection.CapabilityId
+import org.bastion.feature.protection.CapabilityItem
+import org.bastion.feature.protection.CircuitId
 import org.bastion.feature.protection.HealthId
 import org.bastion.feature.protection.HealthItem
 import org.bastion.mobile.BuildConfig
@@ -67,6 +70,48 @@ class DeviceState(private val context: Context) {
 
     /** Whether a secure keyguard is showing right now (used to withhold remote input). */
     fun isKeyguardLocked(): Boolean = context.getSystemService<KeyguardManager>()?.isKeyguardLocked == true
+
+    fun hasMicrophone(): Boolean = granted(Manifest.permission.RECORD_AUDIO)
+
+    fun hasContacts(): Boolean = granted(Manifest.permission.READ_CONTACTS)
+
+    fun hasCalls(): Boolean = granted(Manifest.permission.CALL_PHONE) &&
+        granted(Manifest.permission.ANSWER_PHONE_CALLS) &&
+        granted(Manifest.permission.READ_PHONE_STATE)
+
+    fun hasSms(): Boolean = granted(Manifest.permission.SEND_SMS) &&
+        granted(Manifest.permission.READ_SMS) &&
+        granted(Manifest.permission.RECEIVE_SMS)
+
+    /** Whether the owner enabled the accessibility service that drives remote screen and input. */
+    fun isRemoteControlEnabled(): Boolean = RemoteInputService.instance != null
+
+    /** Optional capabilities with their real, live state. */
+    fun capabilities(): List<CapabilityItem> = listOf(
+        CapabilityItem(CapabilityId.CAMERA, hasCamera()),
+        CapabilityItem(CapabilityId.MICROPHONE, hasMicrophone()),
+        CapabilityItem(CapabilityId.CONTACTS, hasContacts()),
+        CapabilityItem(CapabilityId.PHONE, hasCalls()),
+        CapabilityItem(CapabilityId.SMS, hasSms()),
+        CapabilityItem(CapabilityId.ACCESSIBILITY, isRemoteControlEnabled()),
+    )
+
+    private fun activeCapabilities() =
+        context.getSystemService<ConnectivityManager>()?.let { cm ->
+            cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        }
+
+    /** Circuit elements that are really up: validated network, VPN, relay, controller and services. */
+    fun connections(relayOk: Boolean?, controllerRecent: Boolean): Set<CircuitId> = buildSet {
+        add(CircuitId.PHONE)
+        val caps = activeCapabilities()
+        if (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) add(CircuitId.NETWORK)
+        if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) add(CircuitId.VPN)
+        if (relayOk == true) add(CircuitId.RELAY)
+        if (relayOk == true && controllerRecent) add(CircuitId.PC)
+        if (hasLocation()) add(CircuitId.LOCATION)
+        if (isRemoteControlEnabled()) add(CircuitId.CONTROL)
+    }
 
     fun health(relayOk: Boolean?): List<HealthItem> = listOf(
         HealthItem(HealthId.SCREEN_LOCK, isScreenLocked()),
