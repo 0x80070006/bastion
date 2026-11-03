@@ -4,6 +4,7 @@
   import ActionDialogs, { type DialogKind } from "./ActionDialogs.svelte";
   import CameraPanel from "./CameraPanel.svelte";
   import ScreenPanel from "./ScreenPanel.svelte";
+  import PhonePanel from "./PhonePanel.svelte";
   import {
     api,
     errorCode,
@@ -273,6 +274,8 @@
       <CameraPanel deviceId={device.id} {active} {revision} />
 
       <ScreenPanel deviceId={device.id} {active} />
+
+      <PhonePanel deviceId={device.id} {active} />
 
       {#if detail.commands.length > 0}
         <h2>{t("device.commands")}</h2>

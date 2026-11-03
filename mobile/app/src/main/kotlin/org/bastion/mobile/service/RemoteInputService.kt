@@ -211,6 +211,27 @@ class RemoteInputService : AccessibilityService() {
         return set
     }
 
+    /**
+     * Presses the on-screen control of the in-call UI whose label or description contains one of
+     * [labels] (case-insensitive). Used for the speaker toggle, which only the default dialer can
+     * switch through the audio API. Returns false when no such control is on screen.
+     */
+    fun pressInCallControl(labels: List<String>): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return try {
+            val target = labels.firstNotNullOfOrNull { label ->
+                root.findAccessibilityNodeInfosByText(label).firstOrNull { node ->
+                    node.isEnabled && (node.isClickable || node.parent?.isClickable == true)
+                }
+            } ?: return false
+            val clickable = if (target.isClickable) target else target.parent
+            clickable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+        } finally {
+            @Suppress("DEPRECATION")
+            root.recycle()
+        }
+    }
+
     /** Best-effort wake of a sleeping display. Never unlocks the keyguard. */
     @Suppress("DEPRECATION", "WakelockTimeout")
     private fun wake(): Boolean {

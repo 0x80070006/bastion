@@ -21,6 +21,14 @@ manifeste DOIT figurer ici.
 | `USE_BIOMETRIC` | verrou de l'application | installation | code de l'appareil |
 | Admin d'appareil (`BIND_DEVICE_ADMIN`) : `force-lock`, `wipe-data`, `watch-login` | verrouillage, effacement, échecs de déverrouillage | écran Santé | verrouillage / effacement indisponibles |
 | Service d'accessibilité (`BIND_ACCESSIBILITY_SERVICE`) : `canTakeScreenshot`, `canPerformGestures`, `canRetrieveWindowContent` | contrôle à distance (recopie d'écran + toucher/balayage/texte/navigation) | **optionnel**, activé par le propriétaire dans *Réglages → Accessibilité → Contrôle à distance Bastion* | contrôle à distance indisponible |
+| `READ_CONTACTS` | afficher le répertoire sur le PC (lecture à la demande, jamais stocké sur le PC) | **optionnelle**, accordée par le propriétaire sur le téléphone | commande refusée avec le motif `contacts_permission_denied` |
+| `CALL_PHONE`, `ANSWER_PHONE_CALLS` | composer, décrocher et raccrocher depuis le PC, sur la SIM du téléphone | **optionnelles**, accordées par le propriétaire sur le téléphone | motif `call_permission_denied` |
+| `READ_PHONE_STATE` | état de l'appel (sonnerie, en communication) affiché sur le PC | **optionnelle**, accordée par le propriétaire sur le téléphone | état d'appel non remonté |
+
+Les **appels** utilisent la SIM du téléphone : le son reste sur le téléphone (haut-parleur ou écouteur),
+car Android n'autorise aucune application tierce à capter ni à injecter l'audio d'un appel. Passer un
+appel ne déverrouille pas l'appareil. Le haut-parleur est basculé en appuyant sur le bouton de
+l'écran d'appel via le service d'accessibilité (motif `unsupported` si le bouton est introuvable).
 
 Le **contrôle à distance** est facultatif et n'est **pas** un prérequis de protection : tant que
 le propriétaire n'a pas activé le service d'accessibilité (ou provisionné Device Owner), une

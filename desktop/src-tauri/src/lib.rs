@@ -82,7 +82,12 @@ fn audio_sink(app: AppHandle) -> crate::core::AudioSink {
 fn screen_sink(app: AppHandle) -> crate::core::ScreenSink {
     use base64::Engine;
     Arc::new(
-        move |device_id: &[u8], sequence: u64, jpeg: &[u8], width: u32, height: u32, locked: bool| {
+        move |device_id: &[u8],
+              sequence: u64,
+              jpeg: &[u8],
+              width: u32,
+              height: u32,
+              locked: bool| {
             let payload = serde_json::json!({
                 "deviceId": hex::encode(device_id),
                 "sequence": sequence,
@@ -92,6 +97,16 @@ fn screen_sink(app: AppHandle) -> crate::core::ScreenSink {
                 "locked": locked,
             });
             let _ = app.emit("bastion://screen", payload);
+        },
+    )
+}
+
+/// Pushes contact pages and call state to the webview (in memory only, never stored).
+fn phone_sink(app: AppHandle) -> crate::core::PhoneSink {
+    Arc::new(
+        move |name: &str, device_id: &[u8], mut payload: serde_json::Value| {
+            payload["deviceId"] = serde_json::Value::String(hex::encode(device_id));
+            let _ = app.emit(&format!("bastion://{name}"), payload);
         },
     )
 }
@@ -158,6 +173,7 @@ pub fn run() {
                 frame_sink(app.handle().clone()),
                 audio_sink(app.handle().clone()),
                 screen_sink(app.handle().clone()),
+                phone_sink(app.handle().clone()),
             );
             app.manage(Arc::clone(&core));
             tauri::async_runtime::spawn(async move {

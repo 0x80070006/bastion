@@ -19,6 +19,8 @@ message Event {
     MediaFrame media_frame = 6;
     AudioChunk audio_chunk = 7;
     ScreenFrame screen_frame = 8;
+    ContactsPage contacts_page = 9;
+    CallState call_state = 10;
   }
 }
 
@@ -169,6 +171,45 @@ message ScreenFrame {
   // True when the phone is currently showing a secure keyguard, so input is being withheld and
   // the controller should show a "locked" hint.
   bool locked = 6;
+}
+
+message Contact {
+  // Display name, max 128 characters.
+  string name = 1;
+  // Phone numbers as stored, at most 5 per contact, each max 32 characters.
+  repeated string numbers = 2;
+}
+
+// One page of the address book (ContactsRequest). `total` is the number of matches, so the
+// controller can ask for the next page.
+message ContactsPage {
+  uint32 offset = 1;
+  uint32 total = 2;
+  repeated Contact contacts = 3;
+  // The request's query, echoed so a late page for an old search is dropped.
+  string query = 4;
+}
+
+// Current state of the phone's call, pushed on every change (CallControl or a call the owner
+// places or receives on the phone itself).
+message CallState {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_IDLE = 1;
+    STATE_RINGING = 2;
+    STATE_DIALING = 3;
+    STATE_ACTIVE = 4;
+  }
+  State state = 1;
+  // Remote number, empty when idle or hidden.
+  string number = 2;
+  // Contact name for `number`, if known.
+  string name = 3;
+  bool speaker = 4;
+  // Phone-side time of this change, Unix epoch milliseconds.
+  int64 at_ms = 5;
+  // Machine-readable reason when a CallControl was refused, e.g. "call_permission_denied".
+  string error = 6;
 }
 
 message LastChanceBeacon {

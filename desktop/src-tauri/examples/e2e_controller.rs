@@ -21,8 +21,8 @@ use bastion_desktop_lib::engine::{Action, Media, Session};
 use bastion_desktop_lib::model::{PairingState, RelaySettings};
 use bastion_desktop_lib::relay_client::RelayClient;
 use bastion_proto::v1::{
-    AudioControl, CapturePhoto, Command, LocateNow, RemoteInput, RequestStatus, Ring, ScreenControl,
-    StopRing, StreamControl, Tap, capture_photo, command, remote_input,
+    AudioControl, CapturePhoto, Command, LocateNow, RemoteInput, RequestStatus, Ring,
+    ScreenControl, StopRing, StreamControl, Tap, capture_photo, command, remote_input,
 };
 use bastion_relay::{Config, Relay};
 
@@ -134,6 +134,10 @@ async fn main() {
                             jpeg.len(),
                         );
                     }
+                    Media::Contacts {
+                        total, contacts, ..
+                    } => println!("CONTACTS {} of {total}", contacts.len()),
+                    Media::Call { state, error, .. } => println!("CALL {state} {error}"),
                 }
             }
             ids.push(item.id);
@@ -347,11 +351,17 @@ async fn main() {
                 // On a device without the accessibility service the phone replies
                 // `accessibility_disabled`; with it enabled, ScreenFrame events arrive. Either
                 // outcome proves the command path end to end.
-                let screen_status = d
-                    .commands
-                    .iter()
-                    .find(|c| c.kind == "screen")
-                    .map_or("none", |c| if c.reason.is_empty() { &c.status } else { &c.reason });
+                let screen_status =
+                    d.commands
+                        .iter()
+                        .find(|c| c.kind == "screen")
+                        .map_or("none", |c| {
+                            if c.reason.is_empty() {
+                                &c.status
+                            } else {
+                                &c.reason
+                            }
+                        });
                 println!(
                     "E2E_OK photo={photos} frames={frames} chunks={chunks} geofences=ok screens={screens} screen_result={screen_status}"
                 );

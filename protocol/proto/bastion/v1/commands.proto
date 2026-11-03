@@ -33,6 +33,10 @@ message Command {
     // controller's voice (AudioPlay commands) through its speaker. The OS mic indicator stays on.
     IntercomControl intercom_control = 16;
     AudioPlay audio_play = 17;
+    // Owner reads the phone's address book and places calls over the phone's own SIM. Needs the
+    // READ_CONTACTS / CALL_PHONE runtime permissions, granted on the phone by the owner.
+    ContactsRequest contacts_request = 18;
+    CallControl call_control = 19;
   }
 }
 
@@ -216,6 +220,33 @@ message AudioPlay {
   // 16-bit mono PCM, max 384 KiB.
   bytes pcm = 2;
   uint32 sample_rate = 3;
+}
+
+// Asks for one page of the phone's address book, answered by a ContactsPage event. Contacts are
+// never persisted on the controller: they live in memory for the length of the session.
+message ContactsRequest {
+  // Case-insensitive substring of the name or number; empty = everything.
+  string query = 1;
+  uint32 offset = 2;
+  // Clamped by the phone to 1..200 (0 = 100).
+  uint32 limit = 3;
+}
+
+// Drives a phone call on the phone's own SIM. The call audio stays on the phone (speaker or
+// earpiece): Android does not let a third-party app capture or inject call audio. A dialled
+// number is only placed with the owner's CALL_PHONE grant; the lock screen is never bypassed.
+message CallControl {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_DIAL = 1;
+    ACTION_ANSWER = 2;
+    ACTION_HANGUP = 3;
+    ACTION_SPEAKER_ON = 4;
+    ACTION_SPEAKER_OFF = 5;
+  }
+  Action action = 1;
+  // Required for ACTION_DIAL: digits, +, *, # only, max 32 characters (enforced by the receiver).
+  string number = 2;
 }
 
 message Wipe {

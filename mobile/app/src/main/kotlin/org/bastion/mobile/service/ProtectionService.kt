@@ -64,6 +64,8 @@ class ProtectionService : Service() {
     private lateinit var device: DeviceState
     private lateinit var locator: Locator
     private lateinit var alarm: Alarm
+    private lateinit var contactsReader: ContactsReader
+    private lateinit var calls: CallController
     private var loop: Job? = null
     private var periodic: Job? = null
     private var streamJob: Job? = null
@@ -102,6 +104,11 @@ class ProtectionService : Service() {
         device = DeviceState(this)
         locator = Locator(this, device)
         alarm = Alarm(this)
+        contactsReader = ContactsReader(this)
+        calls = CallController(this, contactsReader) { state ->
+            scope.launch { repository.sendEvent(Event.newBuilder().setCallState(state).build()) }
+        }
+        calls.start()
         ContextCompat.registerReceiver(
             this,
             systemEvents,
@@ -138,6 +145,7 @@ class ProtectionService : Service() {
 
     override fun onDestroy() {
         unregisterReceiver(systemEvents)
+        calls.stop()
         alarm.stop()
         locator.stopTracking()
         streamJob?.cancel()
@@ -336,7 +344,25 @@ class ProtectionService : Service() {
             is AgentCommand.Intercom -> intercom(command)
 
             is AgentCommand.AudioPlay -> playback?.play(command.pcm, command.sampleRate)
+
+            is AgentCommand.Contacts -> contacts(command)
+
+            is AgentCommand.Call -> {
+                calls.start()
+                calls.handle(command.control)
+            }
         }
+    }
+
+    /** Sends one page of the address book, or a refusal when the owner has not granted Contacts. */
+    private suspend fun contacts(command: AgentCommand.Contacts) {
+        val page = contactsReader.page(command.query, command.offset, command.limit)
+        if (page == null) {
+            repository.sendResult(command.messageId, Status.STATUS_FAILED, "contacts_permission_denied")
+            return
+        }
+        repository.sendEvent(Event.newBuilder().setContactsPage(page).build())
+        repository.sendResult(command.messageId, Status.STATUS_COMPLETED)
     }
 
     /** Two-way voice: streams the mic to the controller and opens the speaker for their voice. */

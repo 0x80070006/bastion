@@ -117,6 +117,10 @@ pub type AudioSink = Arc<dyn Fn(&[u8], u64, &[u8], u32) + Send + Sync>;
 /// the webview.
 pub type ScreenSink = Arc<dyn Fn(&[u8], u64, &[u8], u32, u32, bool) + Send + Sync>;
 
+/// Pushes a decrypted in-memory phone payload (event name suffix, device id, JSON) to the webview:
+/// contact pages and call state. Never persisted.
+pub type PhoneSink = Arc<dyn Fn(&str, &[u8], serde_json::Value) + Send + Sync>;
+
 /// Events pushed to the webview.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiEvent {
@@ -137,6 +141,7 @@ pub struct AppCore {
     frames: FrameSink,
     audio: AudioSink,
     screen: ScreenSink,
+    phone: PhoneSink,
     generation: AtomicU64,
     poller: Mutex<Option<JoinHandle<()>>>,
     connection: Mutex<Connection>,
@@ -220,6 +225,7 @@ impl AppCore {
         frames: FrameSink,
         audio: AudioSink,
         screen: ScreenSink,
+        phone: PhoneSink,
     ) -> Arc<Self> {
         let core = Arc::new(Self {
             paths,
@@ -229,6 +235,7 @@ impl AppCore {
             frames,
             audio,
             screen,
+            phone,
             generation: AtomicU64::new(0),
             poller: Mutex::new(None),
             connection: Mutex::new(Connection::Idle),
@@ -724,6 +731,46 @@ impl AppCore {
                     height,
                     locked,
                 } => (self.screen)(&device_id, sequence, &jpeg, width, height, locked),
+                Media::Contacts {
+                    device_id,
+                    offset,
+                    total,
+                    query,
+                    contacts,
+                } => {
+                    let contacts: Vec<_> = contacts
+                        .into_iter()
+                        .map(|(name, numbers)| serde_json::json!({ "name": name, "numbers": numbers }))
+                        .collect();
+                    (self.phone)(
+                        "contacts",
+                        &device_id,
+                        serde_json::json!({
+                            "offset": offset,
+                            "total": total,
+                            "query": query,
+                            "contacts": contacts,
+                        }),
+                    );
+                }
+                Media::Call {
+                    device_id,
+                    state,
+                    number,
+                    name,
+                    speaker,
+                    error,
+                } => (self.phone)(
+                    "call",
+                    &device_id,
+                    serde_json::json!({
+                        "state": state,
+                        "number": number,
+                        "name": name,
+                        "speaker": speaker,
+                        "error": error,
+                    }),
+                ),
             }
         }
         if stored_photo {

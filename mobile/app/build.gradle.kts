@@ -41,8 +41,8 @@ android {
 
     defaultConfig {
         applicationId = branding.getValue("applicationId")
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.4.0"
         resValue("string", "product_name", branding.getValue("name"))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

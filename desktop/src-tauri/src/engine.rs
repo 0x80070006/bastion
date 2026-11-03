@@ -120,6 +120,43 @@ pub enum Media {
         /// The phone is showing a secure keyguard, so input is withheld.
         locked: bool,
     },
+    /// A page of the phone's address book, held in memory only.
+    Contacts {
+        /// Device that sent it.
+        device_id: Vec<u8>,
+        /// Index of the first contact of the page.
+        offset: u32,
+        /// Number of matches for the query.
+        total: u32,
+        /// The query this page answers.
+        query: String,
+        /// `(name, numbers)` of each contact.
+        contacts: Vec<(String, Vec<String>)>,
+    },
+    /// The phone's call state, pushed on every change.
+    Call {
+        /// Device that sent it.
+        device_id: Vec<u8>,
+        /// `idle`, `ringing`, `dialing` or `active`.
+        state: &'static str,
+        /// Remote number, empty when idle.
+        number: String,
+        /// Contact name, empty when unknown.
+        name: String,
+        /// Speakerphone is on.
+        speaker: bool,
+        /// Machine-readable refusal reason, empty on success.
+        error: String,
+    },
+}
+
+const MAX_CONTACTS_PER_PAGE: usize = 200;
+const MAX_NUMBERS_PER_CONTACT: usize = 5;
+const MAX_NAME_CHARS: usize = 128;
+const MAX_NUMBER_CHARS: usize = 32;
+
+fn truncated(text: &str, max: usize) -> String {
+    text.chars().filter(|c| !c.is_control()).take(max).collect()
 }
 
 struct PendingInvite {
@@ -164,6 +201,8 @@ pub fn command_kind(command: &Command) -> &'static str {
         Some(command::Kind::RemoteInput(_)) => "input",
         Some(command::Kind::IntercomControl(_)) => "intercom",
         Some(command::Kind::AudioPlay(_)) => "audioPlay",
+        Some(command::Kind::ContactsRequest(_)) => "contacts",
+        Some(command::Kind::CallControl(_)) => "call",
         None => "unknown",
     }
 }
@@ -709,6 +748,49 @@ impl Session {
                         locked: frame.locked,
                     });
                 }
+                return notices;
+            }
+            Some(event::Kind::ContactsPage(page)) => {
+                let contacts = page
+                    .contacts
+                    .iter()
+                    .take(MAX_CONTACTS_PER_PAGE)
+                    .map(|c| {
+                        (
+                            truncated(&c.name, MAX_NAME_CHARS),
+                            c.numbers
+                                .iter()
+                                .take(MAX_NUMBERS_PER_CONTACT)
+                                .map(|n| truncated(n, MAX_NUMBER_CHARS))
+                                .collect(),
+                        )
+                    })
+                    .collect();
+                self.media.push(Media::Contacts {
+                    device_id: self.data.devices[index].device_id.clone(),
+                    offset: page.offset,
+                    total: page.total,
+                    query: truncated(&page.query, 64),
+                    contacts,
+                });
+                return notices;
+            }
+            Some(event::Kind::CallState(call)) => {
+                use bastion_proto::v1::call_state::State;
+                let state = match State::try_from(call.state) {
+                    Ok(State::Ringing) => "ringing",
+                    Ok(State::Dialing) => "dialing",
+                    Ok(State::Active) => "active",
+                    _ => "idle",
+                };
+                self.media.push(Media::Call {
+                    device_id: self.data.devices[index].device_id.clone(),
+                    state,
+                    number: truncated(&call.number, MAX_NUMBER_CHARS),
+                    name: truncated(&call.name, MAX_NAME_CHARS),
+                    speaker: call.speaker,
+                    error: truncated(&call.error, 48),
+                });
                 return notices;
             }
             None => return notices,

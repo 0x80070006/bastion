@@ -130,7 +130,39 @@ export type CommandRequest =
       durationSeconds: number;
       keepAwake: boolean;
     }
-  | { kind: "intercom"; enabled: boolean; durationSeconds: number };
+  | { kind: "intercom"; enabled: boolean; durationSeconds: number }
+  | { kind: "contacts"; query: string; offset: number }
+  | { kind: "call"; action: CallAction; number: string };
+
+export type CallAction = "dial" | "answer" | "hangup" | "speakerOn" | "speakerOff";
+
+/** One address-book entry, held in memory only. */
+export interface PhoneContact {
+  name: string;
+  numbers: string[];
+}
+
+/** A page of the phone's address book pushed from the backend. */
+export interface ContactsPage {
+  deviceId: string;
+  offset: number;
+  total: number;
+  query: string;
+  contacts: PhoneContact[];
+}
+
+export type CallPhase = "idle" | "ringing" | "dialing" | "active";
+
+/** The phone's call state pushed from the backend. */
+export interface CallState {
+  deviceId: string;
+  state: CallPhase;
+  number: string;
+  name: string;
+  speaker: boolean;
+  /** Machine-readable refusal reason, empty on success. */
+  error: string;
+}
 
 export type GlobalInputAction =
   "back" | "home" | "recents" | "notifications" | "quickSettings" | "wake" | "lock";
@@ -286,6 +318,16 @@ export async function onFrame(handler: (frame: StreamFrame) => void): Promise<Un
 /** Subscribes to live audio chunks. */
 export async function onAudio(handler: (chunk: AudioChunkMsg) => void): Promise<UnlistenFn> {
   return listen<AudioChunkMsg>("bastion://audio", (event) => handler(event.payload));
+}
+
+/** Subscribes to contact pages read from the phone. */
+export async function onContacts(handler: (page: ContactsPage) => void): Promise<UnlistenFn> {
+  return listen<ContactsPage>("bastion://contacts", (event) => handler(event.payload));
+}
+
+/** Subscribes to the phone's call state. */
+export async function onCall(handler: (call: CallState) => void): Promise<UnlistenFn> {
+  return listen<CallState>("bastion://call", (event) => handler(event.payload));
 }
 
 /** Subscribes to live screen-mirror frames. */

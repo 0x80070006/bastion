@@ -123,6 +123,18 @@ public sealed interface AgentCommand {
         public val pcm: ByteArray,
         public val sampleRate: Int,
     ) : AgentCommand
+
+    /** Read one page of the address book. */
+    public class Contacts(
+        override val messageId: ByteArray,
+        public val query: String,
+        public val offset: Int,
+        public val limit: Int,
+    ) : AgentCommand
+
+    /** Place, answer or end a call, or switch the speakerphone. */
+    public class Call(override val messageId: ByteArray, public val control: org.bastion.protocol.v1.CallControl) :
+        AgentCommand
 }
 
 /** Outcome of an invitation scan. */
@@ -530,6 +542,9 @@ public class PhoneAgent(private val sodium: Sodium) {
         private const val MAX_SCREEN_EDGE_PX = 1600
         private const val DEFAULT_SCREEN_SECONDS = 300
         private const val MAX_SCREEN_SECONDS = 900
+        private const val MAX_QUERY = 64
+        private const val DEFAULT_CONTACTS = 100
+        private const val MAX_CONTACTS = 200
         private const val ROTATION_INTERVAL_MS = 7L * 24 * 3600 * 1000
 
         /** TTL caps per payload type (PROTOCOL.md §6.8). */
@@ -634,6 +649,15 @@ public class PhoneAgent(private val sodium: Sodium) {
                 command.audioPlay.pcm.toByteArray(),
                 command.audioPlay.sampleRate,
             )
+
+            Command.KindCase.CONTACTS_REQUEST -> AgentCommand.Contacts(
+                id,
+                command.contactsRequest.query.take(MAX_QUERY),
+                command.contactsRequest.offset.coerceAtLeast(0),
+                command.contactsRequest.limit.let { if (it == 0) DEFAULT_CONTACTS else it.coerceIn(1, MAX_CONTACTS) },
+            )
+
+            Command.KindCase.CALL_CONTROL -> AgentCommand.Call(id, command.callControl)
 
             else -> null
         }

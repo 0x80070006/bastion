@@ -370,6 +370,46 @@ pub enum CommandRequest {
         /// Hard stop after this many seconds.
         duration_seconds: u32,
     },
+    /// Read one page of the phone's address book (answered by a contacts event).
+    #[serde(rename_all = "camelCase")]
+    Contacts {
+        /// Substring of the name or number; empty lists everything.
+        query: String,
+        /// Index of the first match to return.
+        offset: u32,
+    },
+    /// Drive a call on the phone's SIM.
+    #[serde(rename_all = "camelCase")]
+    Call {
+        /// `dial`, `answer`, `hangup`, `speakerOn` or `speakerOff`.
+        action: String,
+        /// Number to dial (digits, `+`, `*`, `#`); ignored by other actions.
+        number: String,
+    },
+}
+
+/// Longest dialable number and search query accepted from the webview.
+const MAX_NUMBER: usize = 32;
+const MAX_QUERY: usize = 64;
+
+fn call_action(name: &str) -> Option<bastion_proto::v1::call_control::Action> {
+    use bastion_proto::v1::call_control::Action;
+    match name {
+        "dial" => Some(Action::Dial),
+        "answer" => Some(Action::Answer),
+        "hangup" => Some(Action::Hangup),
+        "speakerOn" => Some(Action::SpeakerOn),
+        "speakerOff" => Some(Action::SpeakerOff),
+        _ => None,
+    }
+}
+
+fn dialable(number: &str) -> bool {
+    !number.is_empty()
+        && number.len() <= MAX_NUMBER
+        && number
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '+' | '*' | '#'))
 }
 
 fn camera_value(name: &str) -> i32 {
@@ -460,8 +500,41 @@ fn build_command(request: &CommandRequest) -> AppResult<Command> {
             enabled: *enabled,
             max_duration_seconds: (*duration_seconds).clamp(1, 900),
         }),
+        CommandRequest::Contacts { query, offset } => contacts_request(query, *offset)?,
+        CommandRequest::Call { action, number } => call_control(action, number)?,
     };
     Ok(Command { kind: Some(kind) })
+}
+
+fn contacts_request(query: &str, offset: u32) -> AppResult<command::Kind> {
+    let query = query.trim();
+    if query.chars().count() > MAX_QUERY || query.chars().any(char::is_control) {
+        return Err(AppError::InvalidInput);
+    }
+    Ok(command::Kind::ContactsRequest(
+        bastion_proto::v1::ContactsRequest {
+            query: query.to_owned(),
+            offset,
+            limit: 100,
+        },
+    ))
+}
+
+fn call_control(action: &str, number: &str) -> AppResult<command::Kind> {
+    let action = call_action(action).ok_or(AppError::InvalidInput)?;
+    let number = number.trim();
+    let needs_number = action == bastion_proto::v1::call_control::Action::Dial;
+    if needs_number && !dialable(number) {
+        return Err(AppError::InvalidInput);
+    }
+    Ok(command::Kind::CallControl(bastion_proto::v1::CallControl {
+        action: action as i32,
+        number: if needs_number {
+            number.to_owned()
+        } else {
+            String::new()
+        },
+    }))
 }
 
 /// Sends a non-sensitive command.
